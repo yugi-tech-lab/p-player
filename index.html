@@ -1747,6 +1747,26 @@
       pointer-events: none;
     }
 
+    .status.is-error {
+      color: #b91c1c;
+    }
+
+    @keyframes invalid-operation-flash {
+      0%, 100% { outline-color: transparent; }
+      30%, 70% { outline-color: #dc2626; }
+    }
+
+    .preview .invalid-operation-target {
+      outline: 3px solid #dc2626 !important;
+      outline-offset: 3px;
+      animation: invalid-operation-flash .7s ease 1;
+    }
+
+    button.is-context-disabled {
+      opacity: .48;
+      cursor: not-allowed;
+    }
+
     .design-preset-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3035,6 +3055,10 @@
     .markdown-import-panel {
       display: grid;
       gap: 9px;
+    }
+
+    .markdown-import-panel[hidden] {
+      display: none;
     }
 
     .markdown-import-options {
@@ -7050,6 +7074,7 @@ ${bodyHtml}
       ensureDocumentBlocks();
       normalizeEmbeddedSideContent(elements.preview);
       normalizeXPostSpacing(elements.preview);
+      normalizeLinkCardSize(elements.preview);
       syncRuledCardMetricsForPreview();
       if (activeComponentIndex >= 0) {
         activeInsertedComponent = elements.preview.querySelectorAll("[data-inserted-component]")[activeComponentIndex] || null;
@@ -7162,9 +7187,10 @@ ${bodyHtml}
 
     function getPersistablePreviewHtml() {
       syncRuledCardMetricsForPreview();
+      normalizeLinkCardSize(elements.preview);
       const clone = elements.preview.cloneNode(true);
-      clone.querySelectorAll(".is-document-block-active, .is-embedded-component-active, .table-cell-selected").forEach((element) => {
-        element.classList.remove("is-document-block-active", "is-embedded-component-active", "table-cell-selected");
+      clone.querySelectorAll(".is-document-block-active, .is-embedded-component-active, .table-cell-selected, .invalid-operation-target").forEach((element) => {
+        element.classList.remove("is-document-block-active", "is-embedded-component-active", "table-cell-selected", "invalid-operation-target");
         if (!element.className) element.removeAttribute("class");
       });
       clone.querySelectorAll("[data-resize-bound]").forEach((element) => element.removeAttribute("data-resize-bound"));
@@ -7228,6 +7254,7 @@ ${bodyHtml}
     function formatOutputHtml(html) {
       const outputHolder = document.createElement("div");
       outputHolder.innerHTML = html;
+      normalizeLinkCardSize(outputHolder);
       // Embed URL cards are editor-only UI. Remove them globally before
       // converting components as a safeguard in case contenteditable editing
       // has moved a card outside its original video/X component wrapper.
@@ -7504,12 +7531,24 @@ ${bodyHtml}
       setStatus(count ? `${count}件置換しました` : "一致する文字がありません");
     }
 
-    function setStatus(message) {
+    function setStatus(message, options = {}) {
       elements.status.textContent = message;
+      elements.status.classList.toggle("is-error", options.error === true);
       window.clearTimeout(setStatus.timer);
       setStatus.timer = window.setTimeout(() => {
         elements.status.textContent = "";
+        elements.status.classList.remove("is-error");
       }, 2200);
+    }
+
+    function setInvalidOperation(message, target = null) {
+      setStatus(message, { error: true });
+      const highlightTarget = target?.closest?.("[data-side-content-slot], [data-inserted-component]") || target;
+      if (!highlightTarget?.classList) return;
+      highlightTarget.classList.remove("invalid-operation-target");
+      void highlightTarget.offsetWidth;
+      highlightTarget.classList.add("invalid-operation-target");
+      window.setTimeout(() => highlightTarget.classList.remove("invalid-operation-target"), 800);
     }
 
     let savedPreviewRange = null;
@@ -7897,6 +7936,12 @@ ${bodyHtml}
     }
 
     function insertDocumentBlock(type, bodyMode = "plain") {
+      const insertionContext = getInsertionContext();
+      const restriction = insertionRestriction(type, insertionContext);
+      if (restriction) {
+        setInvalidOperation(restriction, insertionContext.sideContent || insertionContext.containingBody);
+        return;
+      }
       const block = document.createElement("div");
       block.dataset.insertedComponent = type;
       const settings = type === "body"
@@ -7948,6 +7993,112 @@ ${bodyHtml}
       }
       const propertyTarget = document.querySelector(".inserted-component-properties")?._getTarget?.();
       return propertyTarget?.isConnected && elements.preview.contains(propertyTarget) ? propertyTarget : null;
+    }
+
+    function getInsertionContext() {
+      const selection = window.getSelection();
+      const liveRange = selection.rangeCount && elements.preview.contains(selection.anchorNode)
+        ? selection.getRangeAt(0) : null;
+      const range = savedPreviewRange && elements.preview.contains(savedPreviewRange.commonAncestorContainer)
+        ? savedPreviewRange : liveRange;
+      const node = range?.startContainer || null;
+      const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+      return {
+        range,
+        element,
+        sideContent: element?.closest?.("[data-side-content-slot], [data-embed-text]") || null,
+        containingBody: element?.closest?.('[data-inserted-component="body"]') || null,
+        enclosingComponent: element?.closest?.("[data-inserted-component]") || null
+      };
+    }
+
+    function isBodyCard(block) {
+      if (block?.dataset?.insertedComponent !== "body") return false;
+      const settings = parseDocumentBlockSettings(block);
+      return settings.includeCard !== false && settings.includeCard !== "false";
+    }
+
+    function insertionRestriction(type, context = getInsertionContext()) {
+      const insideBodyCard = isBodyCard(context.containingBody);
+      if (["heading", "body"].includes(type) && (context.sideContent || insideBodyCard)) {
+        return type === "body"
+          ? "本文カードの中に本文カードは追加できません。外側を選択してください"
+          : "本文カードや横テキストの中に見出しは追加できません。外側を選択してください";
+      }
+      if (context.sideContent && type !== "list") {
+        return "画像横テキストなどの横コンテンツ内には、文章・リンク・リストのみ配置できます";
+      }
+      return "";
+    }
+
+    function updateInsertionAvailability() {
+      const context = getInsertionContext();
+      document.querySelectorAll(".component-quick-button").forEach((button) => {
+        const reason = insertionRestriction(button.dataset.componentType, context);
+        button.classList.toggle("is-context-disabled", Boolean(reason));
+        button.setAttribute("aria-disabled", String(Boolean(reason)));
+        button.title = reason || `${componentTypeLabel(button.dataset.componentType)}を追加`;
+      });
+      const select = document.querySelector("#componentInsertSelect");
+      Array.from(select?.options || []).forEach((option) => {
+        if (!option.value) return;
+        option.disabled = Boolean(insertionRestriction(option.value, context));
+      });
+      const selectedReason = select?.value ? insertionRestriction(select.value, context) : "";
+      const insertButton = document.querySelector("#componentInsertButton");
+      if (insertButton) {
+        insertButton.classList.toggle("is-context-disabled", Boolean(selectedReason));
+        insertButton.setAttribute("aria-disabled", String(Boolean(selectedReason)));
+        insertButton.title = selectedReason;
+      }
+      ["#addHeadingBlockButton", "#addBodyBlockButton", "#addBodyCardBlockButton"].forEach((selector) => {
+        const button = document.querySelector(selector);
+        if (!button) return;
+        const type = selector === "#addHeadingBlockButton" ? "heading" : "body";
+        const reason = insertionRestriction(type, context);
+        button.classList.toggle("is-context-disabled", Boolean(reason));
+        button.setAttribute("aria-disabled", String(Boolean(reason)));
+        button.title = reason;
+      });
+    }
+
+    function findInvalidNestedStructure() {
+      const documentBlocks = Array.from(elements.preview.querySelectorAll('[data-inserted-component="heading"], [data-inserted-component="body"]'));
+      for (const block of documentBlocks) {
+        const sideContent = block.parentElement?.closest?.("[data-side-content-slot], [data-embed-text]");
+        if (sideContent) {
+          return { target: block, message: `${componentTypeLabel(block.dataset.insertedComponent)}が横コンテンツ内に入っています。外側へ移動してからコピーしてください` };
+        }
+        let ancestor = block.parentElement?.closest?.('[data-inserted-component="body"]') || null;
+        let insideBodyCard = false;
+        while (ancestor) {
+          if (isBodyCard(ancestor)) {
+            insideBodyCard = true;
+            break;
+          }
+          ancestor = ancestor.parentElement?.closest?.('[data-inserted-component="body"]') || null;
+        }
+        if (insideBodyCard && (block.dataset.insertedComponent === "heading" || isBodyCard(block))) {
+          const label = block.dataset.insertedComponent === "heading" ? "見出し" : "本文カード";
+          return { target: block, message: `${label}が本文カード内に入っています。外側へ移動してからコピーしてください` };
+        }
+      }
+      const sideSlots = elements.preview.querySelectorAll("[data-side-content-slot], [data-embed-text]");
+      for (const slot of sideSlots) {
+        const invalidComponent = Array.from(slot.querySelectorAll("[data-inserted-component]")).find((component) =>
+          component.dataset.insertedComponent !== "list"
+        );
+        if (invalidComponent) {
+          return { target: invalidComponent, message: "横コンテンツ内に配置できないパーツがあります。文章・リンク・リストだけにしてください" };
+        }
+        const nestedList = Array.from(slot.querySelectorAll('[data-inserted-component="list"]')).find((list) =>
+          list.parentElement?.closest?.('[data-inserted-component="list"]')
+        );
+        if (nestedList) {
+          return { target: nestedList, message: "横コンテンツ内のリストは1階層までです" };
+        }
+      }
+      return null;
     }
 
     function deselectActiveComponent() {
@@ -8054,6 +8205,7 @@ ${bodyHtml}
       if (followingTextButton) followingTextButton.textContent = selectedInsideBody ? "後ろに行" : "後に本文";
       if (previousTextButton) previousTextButton.disabled = !hasSelectedComponent || selectedInsideSideContent;
       if (followingTextButton) followingTextButton.disabled = !hasSelectedComponent || selectedInsideSideContent;
+      updateInsertionAvailability();
       const selectedBody = selectedComponent?.dataset?.insertedComponent === "body"
         ? selectedComponent : null;
       const previousBody = selectedBody?.previousElementSibling?.dataset?.insertedComponent === "body"
@@ -8240,6 +8392,20 @@ ${bodyHtml}
         updateComponentDeleteButtons();
         return;
       }
+      const type = component.dataset.insertedComponent;
+      const sideContent = component.closest?.("[data-side-content-slot], [data-embed-text]");
+      const containingBody = component.parentElement?.closest?.('[data-inserted-component="body"]');
+      const restriction = insertionRestriction(type, {
+        range: null,
+        element: component,
+        sideContent,
+        containingBody,
+        enclosingComponent: component
+      });
+      if (restriction) {
+        setInvalidOperation(`このパーツはここでは複製できません。${restriction}`, sideContent || containingBody || component);
+        return;
+      }
 
       const duplicate = component.cloneNode(true);
       duplicate.classList.remove("is-document-block-active");
@@ -8248,17 +8414,17 @@ ${bodyHtml}
       duplicate.querySelectorAll("[data-resize-bound]").forEach((element) => delete element.dataset.resizeBound);
       delete duplicate.dataset.resizeBound;
 
-      const type = duplicate.dataset.insertedComponent;
-      if (["heading", "body"].includes(type)) {
+      const duplicateType = duplicate.dataset.insertedComponent;
+      if (["heading", "body"].includes(duplicateType)) {
         delete duplicate.dataset.plBlockId;
         writeDocumentBlockSettings(duplicate, parseDocumentBlockSettings(duplicate));
-        if (type === "heading") ensureHeadingBlockStructure(duplicate);
+        if (duplicateType === "heading") ensureHeadingBlockStructure(duplicate);
         else duplicate.contentEditable = "true";
       }
 
       component.after(duplicate);
       activeInsertedComponent = duplicate;
-      activePreviewTable = type === "table" ? duplicate : null;
+      activePreviewTable = duplicateType === "table" ? duplicate : null;
       selectedTableCells.forEach((cell) => cell.classList.remove("table-cell-selected"));
       selectedTableCells = [];
 
@@ -8272,14 +8438,14 @@ ${bodyHtml}
 
       setupTableColumnResize();
       capturePreviewEdits();
-      if (["heading", "body"].includes(type)) {
+      if (["heading", "body"].includes(duplicateType)) {
         setDocumentBlockControls(duplicate);
         showControlPage("common");
       }
       document.querySelector(".inserted-component-properties")?._sync?.();
       updateComponentDeleteButtons();
       duplicate.scrollIntoView({ behavior: "smooth", block: "center" });
-      const typeLabel = type === "heading" ? "見出し" : type === "body" ? "本文" : "パーツ";
+      const typeLabel = duplicateType === "heading" ? "見出し" : duplicateType === "body" ? "本文" : "パーツ";
       setStatus(`${typeLabel}を複製しました`);
     }
 
@@ -8296,24 +8462,45 @@ ${bodyHtml}
       if (!pastedComponent) return;
       const pastedType = pastedComponent.dataset.insertedComponent;
       const pastedDocumentBlock = ["heading", "body"].includes(pastedType);
+      const insertionRange = savedPreviewRange
+        && elements.preview.contains(savedPreviewRange.commonAncestorContainer)
+        ? savedPreviewRange.cloneRange() : null;
+      const contextNode = insertionRange?.startContainer || selectedComponent;
+      const contextElement = contextNode?.nodeType === Node.ELEMENT_NODE ? contextNode : contextNode?.parentElement;
+      const sideContent = contextElement?.closest?.("[data-side-content-slot], [data-embed-text]") || null;
+      const containingBody = insertionRange
+        ? contextElement?.closest?.('[data-inserted-component="body"]') || null
+        : selectedComponent?.parentElement?.closest?.('[data-inserted-component="body"]') || null;
+      const restriction = insertionRestriction(pastedType, {
+        range: insertionRange,
+        element: contextElement,
+        sideContent,
+        containingBody,
+        enclosingComponent: contextElement?.closest?.("[data-inserted-component]") || null
+      });
+      if (restriction) {
+        setInvalidOperation(`貼り付け先が無効です。${restriction}`, sideContent || containingBody || selectedComponent);
+        return;
+      }
       if (pastedDocumentBlock) {
         delete pastedComponent.dataset.plBlockId;
         writeDocumentBlockSettings(pastedComponent, parseDocumentBlockSettings(pastedComponent));
         if (pastedType === "heading") ensureHeadingBlockStructure(pastedComponent);
         else pastedComponent.contentEditable = "true";
       }
-      const insertionRange = savedPreviewRange
-        && elements.preview.contains(savedPreviewRange.commonAncestorContainer)
-        ? savedPreviewRange.cloneRange() : null;
       if (insertionRange) {
         insertionRange.collapse(true);
         const anchorNode = insertionRange.startContainer;
         const anchorElement = anchorNode.nodeType === Node.ELEMENT_NODE ? anchorNode : anchorNode.parentElement;
         const enclosingComponent = anchorElement?.closest?.("[data-inserted-component]");
-        const containingBody = anchorElement?.closest?.('[data-inserted-component="body"]');
-        if (pastedDocumentBlock && containingBody && elements.preview.contains(containingBody)) {
-          containingBody.after(pastedComponent);
-        } else if (!pastedDocumentBlock && containingBody && enclosingComponent === containingBody) {
+        const rangeSideContent = anchorElement?.closest?.("[data-side-content-slot], [data-embed-text]");
+        const rangeContainingBody = anchorElement?.closest?.('[data-inserted-component="body"]');
+        if (rangeSideContent && pastedType === "list") {
+          if (enclosingComponent?.dataset.embeddedComponent === "list") enclosingComponent.after(pastedComponent);
+          else insertionRange.insertNode(pastedComponent);
+        } else if (pastedDocumentBlock && rangeContainingBody && elements.preview.contains(rangeContainingBody)) {
+          rangeContainingBody.after(pastedComponent);
+        } else if (!pastedDocumentBlock && rangeContainingBody && enclosingComponent === rangeContainingBody) {
           insertionRange.insertNode(pastedComponent);
         } else if (enclosingComponent && elements.preview.contains(enclosingComponent)) {
           enclosingComponent.after(pastedComponent);
@@ -9141,6 +9328,12 @@ ${bodyHtml}
       }
 
       const range = selection.getRangeAt(0);
+      const rangeElement = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
+      const sourceComponent = rangeElement?.closest?.("[data-inserted-component]");
+      if (sourceComponent?.dataset.insertedComponent !== "body") {
+        setInvalidOperation("メモは通常の本文内で作成してください。パーツや横テキストの中には入れられません", sourceComponent);
+        return;
+      }
       const holder = document.createElement("div");
       holder.innerHTML = insertedComponentHtml("note");
       const note = holder.firstElementChild;
@@ -9168,6 +9361,14 @@ ${bodyHtml}
       }
       if (!selection.rangeCount || selection.isCollapsed || !elements.preview.contains(selection.anchorNode)) {
         setStatus("引用にする文章を選択してください");
+        return;
+      }
+
+      const selectedRange = selection.getRangeAt(0);
+      const rangeElement = selectedRange.startContainer.nodeType === Node.ELEMENT_NODE ? selectedRange.startContainer : selectedRange.startContainer.parentElement;
+      const sourceComponent = rangeElement?.closest?.("[data-inserted-component]");
+      if (sourceComponent?.dataset.insertedComponent !== "body") {
+        setInvalidOperation("引用は通常の本文内で作成してください。パーツや横テキストの中には入れられません", sourceComponent);
         return;
       }
 
@@ -10404,6 +10605,7 @@ ${bodyHtml}
       const selection = window.getSelection();
       if (selection.rangeCount && elements.preview.contains(selection.anchorNode)) {
         savedPreviewRange = selection.getRangeAt(0).cloneRange();
+        updateInsertionAvailability();
       }
     });
 
@@ -10796,6 +10998,12 @@ ${bodyHtml}
         setStatus("1つの見出しまたは本文の中だけを選択してください");
         return;
       }
+      const startComponent = elementForNode(range.startContainer)?.closest?.("[data-inserted-component]");
+      const endComponent = elementForNode(range.endContainer)?.closest?.("[data-inserted-component]");
+      if (startComponent !== startBlock || endComponent !== startBlock) {
+        setInvalidOperation("パーツや横テキスト内の文章は、見出し・本文カードへ変換できません", startComponent || startBlock);
+        return;
+      }
 
       const sourceType = startBlock.dataset.insertedComponent;
       const sourceContent = sourceType === "heading"
@@ -10875,6 +11083,12 @@ ${bodyHtml}
       const endBlock = elementForNode(range.endContainer)?.closest?.(blockSelector);
       if (!startBlock || startBlock !== endBlock || !elements.preview.contains(startBlock)) {
         setStatus("1つの見出しまたは本文の中だけを選択してください");
+        return;
+      }
+      const startComponent = elementForNode(range.startContainer)?.closest?.("[data-inserted-component]");
+      const endComponent = elementForNode(range.endContainer)?.closest?.("[data-inserted-component]");
+      if (startComponent !== startBlock || endComponent !== startBlock) {
+        setInvalidOperation("パーツや横テキスト内の文章は、折りたたみへ変換できません", startComponent || startBlock);
         return;
       }
 
@@ -11554,6 +11768,8 @@ ${bodyHtml}
             <div class="field"><label for="linkCardPreset">スタイル</label><select id="linkCardPreset"><option value="standard">標準カード</option><option value="accent">アクセント</option><option value="compact">コンパクト</option><option value="dark">ダーク</option><option value="custom">カスタム</option></select></div>
             <div class="field"><label class="check-item"><input id="linkCardShowImage" type="checkbox">画像を表示</label></div>
             <div class="field" style="flex:1 1 100%;"><label for="linkCardImageUrl">画像URL</label><input id="linkCardImageUrl" type="text" placeholder="https://... または Markdown"></div>
+            <div class="field"><label for="linkCardWidth">幅</label><div class="unit-input"><input id="linkCardWidth" type="number" min="30" max="100" step="0.1" value="66.7"><span>%</span></div></div>
+            <div class="field"><label for="linkCardHeight">高さ</label><div class="unit-input"><input id="linkCardHeight" type="number" min="60" max="300" step="1" value="94"><span>px</span></div></div>
           </div>
         </div>
         <div class="list-settings-group"><strong>配色・形状</strong>
@@ -11573,7 +11789,8 @@ ${bodyHtml}
         background: linkCardPropertyBlock.querySelector("#linkCardBackgroundColor"), backgroundText: linkCardPropertyBlock.querySelector("#linkCardBackgroundColorText"),
         border: linkCardPropertyBlock.querySelector("#linkCardBorderColor"), borderText: linkCardPropertyBlock.querySelector("#linkCardBorderColorText"),
         textColor: linkCardPropertyBlock.querySelector("#linkCardTextColor"), textColorText: linkCardPropertyBlock.querySelector("#linkCardTextColorText"),
-        radius: linkCardPropertyBlock.querySelector("#linkCardRadius")
+        radius: linkCardPropertyBlock.querySelector("#linkCardRadius"),
+        width: linkCardPropertyBlock.querySelector("#linkCardWidth"), height: linkCardPropertyBlock.querySelector("#linkCardHeight")
       };
       componentPage.appendChild(section);
       componentPage.appendChild(dialog);
@@ -12094,6 +12311,8 @@ ${bodyHtml}
           setColorControl(linkCardControls.border, linkCardControls.borderText, component.dataset.linkCardBorder || anchor?.style.borderColor || "#cbd5e1");
           setColorControl(linkCardControls.textColor, linkCardControls.textColorText, component.dataset.linkCardTextColor || anchor?.style.color || "#172033");
           linkCardControls.radius.value = component.dataset.linkCardRadius || String(parseInt(anchor?.style.borderRadius, 10) || 10);
+          linkCardControls.width.value = component.dataset.linkCardWidth || String(parseFloat(component.style.width) || 66.7);
+          linkCardControls.height.value = component.dataset.linkCardHeight || String(parseFloat(anchor?.style.height) || 94);
         }
         if (componentType === "qa") {
           const qaStyle = getComputedStyle(component);
@@ -12976,9 +13195,10 @@ ${bodyHtml}
         const imageWrap = anchor?.querySelector("[data-link-card-image-wrap]");
         const image = imageWrap?.querySelector("[data-link-card-image]");
         const body = anchor?.querySelector("[data-link-card-body]");
+        const title = anchor?.querySelector("[data-link-card-title]");
         const description = anchor?.querySelector("[data-link-card-description]");
         const action = anchor?.querySelector("[data-link-card-action]");
-        if (!anchor || !imageWrap || !image || !body || !description || !action) return;
+        if (!anchor || !imageWrap || !image || !body || !title || !description || !action) return;
         const url = normalizeLinkUrl(linkCardControls.url.value.trim());
         const imageUrl = normalizeLinkUrl(getImageSource(linkCardControls.imageUrl.value.trim()));
         const showImage = linkCardControls.showImage.checked && Boolean(imageUrl);
@@ -12987,6 +13207,8 @@ ${bodyHtml}
         const border = colorValue(linkCardControls.borderText.value, linkCardControls.border.value);
         const textColor = colorValue(linkCardControls.textColorText.value, linkCardControls.textColor.value);
         const radius = Math.max(0, Math.min(40, Number(linkCardControls.radius.value) || 0));
+        const width = Math.max(30, Math.min(100, Number(linkCardControls.width.value) || 66.7));
+        const height = Math.max(60, Math.min(300, Number(linkCardControls.height.value) || 94));
         const buttonLabel = linkCardControls.buttonLabel.value.trim() || "リンクを開く";
         const preset = linkCardControls.preset.value;
         component.dataset.linkCardPreset = preset;
@@ -13000,6 +13222,9 @@ ${bodyHtml}
         component.dataset.linkCardBorder = border;
         component.dataset.linkCardTextColor = textColor;
         component.dataset.linkCardRadius = String(radius);
+        component.dataset.linkCardWidth = String(width);
+        component.dataset.linkCardHeight = String(height);
+        normalizeLinkCardSize(component);
         anchor.href = url || "#";
         if (linkCardControls.newTab.checked) {
           anchor.target = "_blank";
@@ -13012,13 +13237,29 @@ ${bodyHtml}
         anchor.style.border = `${preset === "accent" ? 2 : 1}px solid ${preset === "accent" ? accent : border}`;
         anchor.style.borderRadius = `${radius}px`;
         anchor.style.color = textColor;
+        anchor.style.height = `${height}px`;
+        anchor.style.boxSizing = "border-box";
         anchor.style.boxShadow = preset === "accent" ? "0 5px 16px rgba(15,23,42,.10)" : "none";
         imageWrap.style.display = showImage ? "block" : "none";
+        imageWrap.style.height = "100%";
         if (showImage) image.src = imageUrl;
         else image.removeAttribute("src");
-        body.style.padding = preset === "compact" ? "12px 14px" : "18px";
+        image.style.height = "100%";
+        image.style.minHeight = "0";
+        image.style.maxHeight = "100%";
+        body.style.boxSizing = "border-box";
+        body.style.overflow = "hidden";
+        body.style.padding = preset === "compact" ? "4px 8px" : "6px 10px";
+        title.style.fontSize = "18px";
+        title.style.lineHeight = "1.2";
         description.style.color = preset === "dark" ? "#cbd5e1" : "#64748b";
+        description.style.marginTop = "2px";
+        description.style.fontSize = "16px";
+        description.style.lineHeight = "1.2";
         action.style.color = accent;
+        action.style.marginTop = "4px";
+        action.style.fontSize = "16px";
+        action.style.lineHeight = "1.2";
         action.textContent = `${buttonLabel} →`;
       };
       const apply = () => {
@@ -13934,7 +14175,8 @@ ${bodyHtml}
         [linkCardControls.textColor, linkCardControls.textColorText]
       ]);
       [linkCardControls.url, linkCardControls.newTab, linkCardControls.buttonLabel,
-        linkCardControls.showImage, linkCardControls.imageUrl].forEach((input) => {
+        linkCardControls.showImage, linkCardControls.imageUrl, linkCardControls.width,
+        linkCardControls.height].forEach((input) => {
         input.classList.add("component-property-input");
         input.addEventListener("input", applyComponentSpecificSettings);
         input.addEventListener("change", applyComponentSpecificSettings);
@@ -14041,7 +14283,7 @@ ${bodyHtml}
         xpost: `<div data-inserted-component="xpost" data-xpost-count="1" data-embed-url="" data-embed-url2="" data-embed-url3="" data-xpost-caption="" data-xpost-caption2="" data-xpost-caption3="" data-xpost-side-content="text" data-xpost-side-image-url="" data-xpost-side-text-align="left" data-xpost-side-text-font="inherit" data-xpost-side-text-size="16" data-xpost-side-text-color="#172033" contenteditable="false" style="margin:0 0 6px;"><div data-embed-layout><div data-embed-slot="true">${embedPlaceholderHtml("𝕏", "設定メニューでX投稿のURLを入力してください", false)}</div><div data-embed-text data-side-content-slot="true" contenteditable="true" style="display:none;flex:1 1 0%;min-width:0;overflow-wrap:anywhere;word-break:break-word;white-space:normal;align-self:center;text-align:left;font-family:inherit;font-size:16px;color:#172033;">投稿の横に文章を入力</div><div data-embed-side-image contenteditable="false" style="display:none;flex:1 1 0%;min-width:0;align-self:center;"></div></div></div>`,
         video: `<div data-inserted-component="video" data-embed-url="" data-video-bottom-text="" data-video-bottom-html="" contenteditable="false" style="margin:14px 0;"><div data-embed-slot="true">${embedPlaceholderHtml("▶️", "動画のURL（YouTube・Vimeoなど）を設定してください")}</div></div>`,
         accordion: `<details data-inserted-component="accordion" data-accordion-preset="simple" data-accordion-icon="chevron" data-accordion-initially-open="false" data-accordion-summary-background="#f8fafc" data-accordion-content-background="#ffffff" data-accordion-border="#cbd5e1" data-accordion-accent="#2563eb" data-accordion-text-color="#172033" data-accordion-radius="8" data-accordion-padding="14" contenteditable="false" style="margin:14px 0;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;overflow:hidden;"><summary data-accordion-summary contenteditable="true" style="display:list-item;padding:14px;background:#f8fafc;color:#2563eb;font-weight:700;cursor:pointer;list-style-position:inside;"><span data-accordion-icon contenteditable="false" aria-hidden="true" style="display:none;"></span><span data-accordion-title contenteditable="true" style="margin-left:8px;color:#172033;">詳しい内容を見る</span></summary><div data-accordion-content contenteditable="true" style="padding:14px;color:#172033;line-height:1.8;background:#ffffff;border-top:1px solid #cbd5e1;">ここに折りたたむ内容を入力します。</div></details>`,
-        linkCard: `<div data-inserted-component="linkCard" data-link-card-preset="standard" data-link-card-url="https://example.com" data-link-card-image-url="" data-link-card-show-image="false" data-link-card-new-tab="true" data-link-card-button-label="リンクを開く" data-link-card-accent="#2563eb" data-link-card-background="#ffffff" data-link-card-border="#cbd5e1" data-link-card-text-color="#172033" data-link-card-radius="10" contenteditable="false" style="margin:14px 0;"><a data-link-card-anchor href="https://example.com" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:stretch;gap:0;color:#172033;text-decoration:none;border:1px solid #cbd5e1;border-radius:10px;background:#ffffff;overflow:hidden;"><span data-link-card-image-wrap contenteditable="false" style="display:none;flex:0 0 34%;max-width:220px;background:#f1f5f9;"><img data-link-card-image alt="" style="display:block;width:100%;height:100%;min-height:140px;object-fit:cover;"></span><span data-link-card-body style="display:flex;flex:1 1 auto;min-width:0;flex-direction:column;justify-content:center;padding:18px;"><strong data-link-card-title contenteditable="true" style="display:block;font-size:18px;line-height:1.5;">リンク先のタイトル</strong><span data-link-card-description contenteditable="true" style="display:block;margin-top:6px;color:#64748b;line-height:1.7;">リンク先の説明を入力します。</span><span data-link-card-action contenteditable="false" style="display:inline-flex;align-self:flex-start;margin-top:12px;color:#2563eb;font-weight:700;">リンクを開く →</span></span></a></div>`,
+        linkCard: `<div data-inserted-component="linkCard" data-link-card-preset="standard" data-link-card-url="https://example.com" data-link-card-image-url="" data-link-card-show-image="false" data-link-card-new-tab="true" data-link-card-button-label="リンクを開く" data-link-card-accent="#2563eb" data-link-card-background="#ffffff" data-link-card-border="#cbd5e1" data-link-card-text-color="#172033" data-link-card-radius="10" data-link-card-width="66.7" data-link-card-height="94" contenteditable="false" style="width:66.7%;max-width:100%;box-sizing:border-box;margin:9px 0;"><a data-link-card-anchor href="https://example.com" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:stretch;gap:0;height:94px;box-sizing:border-box;color:#172033;text-decoration:none;border:1px solid #cbd5e1;border-radius:10px;background:#ffffff;overflow:hidden;"><span data-link-card-image-wrap contenteditable="false" style="display:none;flex:0 0 34%;height:100%;max-width:220px;background:#f1f5f9;"><img data-link-card-image alt="" style="display:block;width:100%;height:100%;min-height:0;max-height:100%;object-fit:cover;"></span><span data-link-card-body style="display:flex;flex:1 1 auto;min-width:0;box-sizing:border-box;flex-direction:column;justify-content:center;overflow:hidden;padding:6px 10px;"><strong data-link-card-title contenteditable="true" style="display:block;font-size:18px;line-height:1.2;">リンク先のタイトル</strong><span data-link-card-description contenteditable="true" style="display:block;margin-top:2px;color:#64748b;font-size:16px;line-height:1.2;">リンク先の説明を入力します。</span><span data-link-card-action contenteditable="false" style="display:inline-flex;align-self:flex-start;margin-top:4px;color:#2563eb;font-size:16px;font-weight:700;line-height:1.2;">リンクを開く →</span></span></a></div>`,
         toc: `<nav data-inserted-component="toc" aria-label="目次" style="margin:14px 0;padding:14px 16px;border:1px solid #d9dee8;border-radius:8px;background:#fbfcff;">
           <div contenteditable="false" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
             <strong style="font-size:15px;color:#172033;">目次</strong>
@@ -14275,6 +14517,59 @@ ${bodyHtml}
           blockquote.style.marginTop = "0";
           blockquote.style.marginBottom = "0";
         });
+      });
+    }
+
+    function normalizeLinkCardSize(root) {
+      const components = root?.matches?.('[data-inserted-component="linkCard"]')
+        ? [root]
+        : Array.from(root?.querySelectorAll?.('[data-inserted-component="linkCard"]') || []);
+      components.forEach((component) => {
+        const anchor = component.querySelector("[data-link-card-anchor]");
+        const width = Math.max(30, Math.min(100, Number(component.dataset.linkCardWidth || parseFloat(component.style.width)) || 66.7));
+        const height = Math.max(60, Math.min(300, Number(component.dataset.linkCardHeight || parseFloat(anchor?.style.height)) || 94));
+        component.dataset.linkCardWidth = String(width);
+        component.dataset.linkCardHeight = String(height);
+        component.style.width = `${width}%`;
+        component.style.maxWidth = "100%";
+        component.style.boxSizing = "border-box";
+        component.style.margin = "9px 0";
+        const preset = component.dataset.linkCardPreset || "standard";
+        const imageWrap = component.querySelector("[data-link-card-image-wrap]");
+        const image = component.querySelector("[data-link-card-image]");
+        const body = component.querySelector("[data-link-card-body]");
+        const title = component.querySelector("[data-link-card-title]");
+        const description = component.querySelector("[data-link-card-description]");
+        const action = component.querySelector("[data-link-card-action]");
+        if (anchor) {
+          anchor.style.height = `${height}px`;
+          anchor.style.boxSizing = "border-box";
+        }
+        if (imageWrap) imageWrap.style.height = "100%";
+        if (image) {
+          image.style.height = "100%";
+          image.style.minHeight = "0";
+          image.style.maxHeight = "100%";
+        }
+        if (body) {
+          body.style.boxSizing = "border-box";
+          body.style.overflow = "hidden";
+          body.style.padding = preset === "compact" ? "4px 8px" : "6px 10px";
+        }
+        if (title) {
+          title.style.fontSize = "18px";
+          title.style.lineHeight = "1.2";
+        }
+        if (description) {
+          description.style.marginTop = "2px";
+          description.style.fontSize = "16px";
+          description.style.lineHeight = "1.2";
+        }
+        if (action) {
+          action.style.marginTop = "4px";
+          action.style.fontSize = "16px";
+          action.style.lineHeight = "1.2";
+        }
       });
     }
 
@@ -14568,13 +14863,15 @@ ${bodyHtml}
       );
     }
 
-    function markdownListComponent(token) {
+    function markdownListComponents(token) {
       const list = document.createElement(token.ordered ? "ol" : "ul");
       const marker = token.ordered ? "decimal" : "disc";
       list.dataset.insertedComponent = "list";
       list.dataset.listMarker = marker;
       list.style.cssText = `margin:14px 0;padding:0 0 0 24px;list-style-type:${marker};`;
-      (token.items || []).forEach((item) => {
+      const items = token.items || [];
+      const trailingImages = [];
+      items.forEach((item, itemIndex) => {
         const listItem = document.createElement("li");
         listItem.contentEditable = "true";
         const itemSource = item.text || item.raw || "";
@@ -14585,9 +14882,39 @@ ${bodyHtml}
         const onlyParagraph = listItem.children.length === 1 && listItem.firstElementChild?.tagName === "P"
           ? listItem.firstElementChild : null;
         if (onlyParagraph) onlyParagraph.replaceWith(...onlyParagraph.childNodes);
+        // Marked treats an unindented image immediately after a list as a lazy
+        // continuation of the final <li>. In the import UI that makes the image
+        // lose its standalone image-component sizing and it can appear to have
+        // vanished. An image intended inside a list item remains supported when
+        // its Markdown line is indented.
+        if (itemIndex === items.length - 1) {
+          const continuationLines = String(item.raw || "").split(/\r?\n/).slice(1);
+          let standaloneImageCount = 0;
+          for (let index = continuationLines.length - 1; index >= 0; index -= 1) {
+            const line = continuationLines[index];
+            if (!line.trim()) continue;
+            if (/^(?:!\[|\[!\[)/.test(line)) {
+              standaloneImageCount += 1;
+              continue;
+            }
+            break;
+          }
+          const imageNodes = Array.from(listItem.children).filter((child) =>
+            child.tagName === "IMG"
+            || (child.tagName === "A" && child.children.length === 1 && child.firstElementChild?.tagName === "IMG")
+          ).slice(-standaloneImageCount);
+          imageNodes.forEach((node) => {
+            const image = node.tagName === "IMG" ? node : node.firstElementChild;
+            const component = markdownImageComponent(image, node.tagName === "A" ? node.getAttribute("href") || "" : "");
+            const previous = node.previousSibling;
+            node.remove();
+            if (previous?.nodeName === "BR") previous.remove();
+            if (component) trailingImages.push(component);
+          });
+        }
         list.appendChild(listItem);
       });
-      return list;
+      return [list, ...trailingImages];
     }
 
     function markdownTableComponent(token, result) {
@@ -14729,7 +15056,8 @@ ${bodyHtml}
           result.blocks.push(...markdownParagraphComponents(parsed));
           return;
         } else if (token.type === "list") {
-          block = markdownListComponent(token);
+          result.blocks.push(...markdownListComponents(token));
+          return;
         } else if (token.type === "blockquote") {
           block = markdownComponentFromTemplate("quote");
           block.innerHTML = sanitizeMarkdownHtml(window.marked.parse(token.text || "", { gfm: true, breaks: true }));
@@ -14876,6 +15204,18 @@ ${bodyHtml}
       const anchorNode = selection.anchorNode;
       const anchorElement = anchorNode?.nodeType === Node.ELEMENT_NODE ? anchorNode : anchorNode?.parentElement;
       const enclosingComponent = anchorElement?.closest?.("[data-inserted-component]");
+      const sideContent = anchorElement?.closest?.("[data-side-content-slot], [data-embed-text]");
+      const restriction = insertionRestriction(type, {
+        range: selection.rangeCount ? selection.getRangeAt(0) : null,
+        element: anchorElement,
+        sideContent,
+        containingBody: anchorElement?.closest?.('[data-inserted-component="body"]') || null,
+        enclosingComponent
+      });
+      if (restriction) {
+        setInvalidOperation(restriction, sideContent || enclosingComponent);
+        return;
+      }
       const holder = document.createElement("div");
       holder.innerHTML = html;
       const node = holder.firstElementChild;
@@ -14887,6 +15227,11 @@ ${bodyHtml}
         // A table of contents only makes sense at the top of the article, so
         // it always goes first regardless of where the caret/selection was.
         elements.preview.prepend(node);
+      } else if (sideContent && type === "list" && selection.rangeCount) {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(node);
+        node.dataset.embeddedComponent = "list";
       } else if (insertInsideBody) {
         const range = selection.getRangeAt(0);
         range.deleteContents();
@@ -15524,6 +15869,7 @@ ${bodyHtml}
         selectedTableCells = [];
       }
       document.querySelector(".inserted-component-properties")?._sync?.();
+      updateInsertionAvailability();
       showControlPage("component");
     });
     document.querySelector(".preview-frame")?.addEventListener("click", (event) => {
@@ -16465,6 +16811,12 @@ ${bodyHtml}
     }
 
     async function copyGeneratedHtml() {
+      const invalidStructure = findInvalidNestedStructure();
+      if (invalidStructure) {
+        setInvalidOperation(`HTMLをコピーできません。${invalidStructure.message}`, invalidStructure.target);
+        invalidStructure.target.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
       cleanupEmptyFormattingSpans();
       if (elements.preview.innerHTML) formattedPreviewHtml = getPersistablePreviewHtml();
       const rawHtml = formattedPreviewHtml || buildHtml();
