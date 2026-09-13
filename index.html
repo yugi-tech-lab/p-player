@@ -14663,6 +14663,89 @@ ${bodyHtml}
       }
     });
 
+    function getTableCellGrid(table) {
+      const grid = [];
+      Array.from(table.rows).forEach((row, rowIndex) => {
+        grid[rowIndex] ||= [];
+        let columnIndex = 0;
+        Array.from(row.cells).forEach((cell) => {
+          while (grid[rowIndex][columnIndex]) columnIndex += 1;
+          const columnSpan = Math.max(1, cell.colSpan || 1);
+          const rowSpan = Math.max(1, cell.rowSpan || 1);
+          for (let rowOffset = 0; rowOffset < rowSpan; rowOffset += 1) {
+            grid[rowIndex + rowOffset] ||= [];
+            for (let columnOffset = 0; columnOffset < columnSpan; columnOffset += 1) {
+              grid[rowIndex + rowOffset][columnIndex + columnOffset] = cell;
+            }
+          }
+          columnIndex += columnSpan;
+        });
+      });
+      return grid;
+    }
+
+    function getCaretTextOffset(cell, focusNode, focusOffset) {
+      const range = document.createRange();
+      range.selectNodeContents(cell);
+      try {
+        range.setEnd(focusNode, focusOffset);
+      } catch {
+        return 0;
+      }
+      return range.toString().length;
+    }
+
+    function placeCaretInTableCell(cell, textOffset) {
+      const range = document.createRange();
+      const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+      let remaining = Math.max(0, textOffset);
+      let textNode = walker.nextNode();
+      let lastTextNode = null;
+      while (textNode && remaining > textNode.data.length) {
+        remaining -= textNode.data.length;
+        lastTextNode = textNode;
+        textNode = walker.nextNode();
+      }
+      if (textNode) range.setStart(textNode, Math.min(remaining, textNode.data.length));
+      else if (lastTextNode) range.setStart(lastTextNode, lastTextNode.data.length);
+      else range.selectNodeContents(cell);
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      savedPreviewRange = range.cloneRange();
+    }
+
+    elements.preview.addEventListener("keydown", (event) => {
+      if (!["ArrowUp", "ArrowDown"].includes(event.key)
+        || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
+        || event.isComposing) return;
+      const selection = window.getSelection();
+      if (!selection.rangeCount || !selection.isCollapsed) return;
+      const focusElement = selection.focusNode?.nodeType === Node.ELEMENT_NODE
+        ? selection.focusNode
+        : selection.focusNode?.parentElement;
+      const cell = focusElement?.closest?.("td, th");
+      const table = cell?.closest("table");
+      if (!cell || !table || !elements.preview.contains(table)) return;
+      event.preventDefault();
+
+      const grid = getTableCellGrid(table);
+      const rowIndex = cell.parentElement.rowIndex;
+      const columnIndex = grid[rowIndex]?.indexOf(cell) ?? -1;
+      if (columnIndex < 0) return;
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      let targetRowIndex = rowIndex + step;
+      while (grid[targetRowIndex]?.[columnIndex] === cell) targetRowIndex += step;
+      const targetCell = grid[targetRowIndex]?.[columnIndex];
+      if (!targetCell) return;
+
+      placeCaretInTableCell(
+        targetCell,
+        getCaretTextOffset(cell, selection.focusNode, selection.focusOffset)
+      );
+    });
+
     elements.preview.addEventListener("click", (event) => {
       const applyButton = event.target.closest("[data-embed-apply-url]");
       const component = event.target.closest('[data-inserted-component="xpost"], [data-inserted-component="video"]');
