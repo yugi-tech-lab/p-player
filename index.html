@@ -1385,7 +1385,7 @@
     }
 
     .preview [data-inserted-component="xpost"] {
-      margin-top: 6px !important;
+      margin-top: 0 !important;
       margin-bottom: 6px !important;
     }
 
@@ -7249,10 +7249,10 @@ ${bodyHtml}
           component.remove();
           return;
         }
-        // Confirmed by direct testing on ProtoPedia: both modes are a <br>-wrapped
-        // native <blockquote> + widgets.js <script> pair — only the class and its
-        // matching width attribute differ. Match the confirmed-working markup
-        // verbatim rather than reconstructing it.
+        // Both modes use a native <blockquote> + widgets.js <script> pair; only
+        // the class and matching width attribute differ. A trailing break keeps
+        // following content separate, while omitting a leading break prevents
+        // an oversized gap above the post.
         // Same scaling technique as the live preview: X's own max-width parameter
         // is a fixed pixel ceiling (irrelevant to the visual size here), and the
         // actual container-relative scaling comes from wrapping this in our own
@@ -7286,14 +7286,14 @@ ${bodyHtml}
           const videoColumn = `<div style="flex:0 0 ${videoColumnPercent}%;min-width:0;">${blockquotes[0]}</div>`;
           const contentColumn = `<div style="flex:1 1 0%;min-width:0;align-self:${textValign};">${sideContentHtml}</div>`;
           const columns = component.dataset.xpostTextSide === "left" ? contentColumn + videoColumn : videoColumn + contentColumn;
-          wrapper.innerHTML = `<br><div style="display:flex;align-items:flex-start;gap:16px;">${columns}</div>${scriptHtml}<br>`;
+          wrapper.innerHTML = `<div style="display:flex;align-items:flex-start;gap:16px;">${columns}</div>${scriptHtml}<br>`;
         } else if (count > 1) {
           const columns = blockquotes.map((blockquote) => `<div style="flex:1 1 0%;min-width:0;">${blockquote}</div>`).join("");
-          wrapper.innerHTML = `<br><div style="display:flex;align-items:flex-start;gap:12px;width:100%;">${columns}</div>${scriptHtml}<br>`;
+          wrapper.innerHTML = `<div style="display:flex;align-items:flex-start;gap:12px;width:100%;">${columns}</div>${scriptHtml}<br>`;
         } else {
           const marginStyle = component.dataset.xpostAlign === "right" ? "margin:0 0 0 auto;"
             : component.dataset.xpostAlign === "center" ? "margin:0 auto;" : "margin:0;";
-          wrapper.innerHTML = `<br><div style="max-width:${widthPercent}%;${marginStyle}">${blockquotes[0]}</div>${scriptHtml}<br>`;
+          wrapper.innerHTML = `<div style="max-width:${widthPercent}%;${marginStyle}">${blockquotes[0]}</div>${scriptHtml}<br>`;
         }
         component.replaceWith(...Array.from(wrapper.childNodes));
       });
@@ -8739,6 +8739,7 @@ ${bodyHtml}
 
     function cleanupEmptyFormattingSpans(root = elements.preview) {
       Array.from(root.querySelectorAll("span")).reverse().forEach((span) => {
+        if (span.matches("[data-speech-tail]")) return;
         const hasVisibleContent = span.textContent.length > 0
           || Boolean(span.querySelector("br, img, video, audio, iframe, hr"));
         if (!hasVisibleContent) {
@@ -9363,11 +9364,11 @@ ${bodyHtml}
           ["imageText", "📰", "左右画像＋テキスト"],
           ["imagePair", "🎞️", "画像横並び（2〜3枚）"],
           ["code", "💻", "コード"],
+          ["accordion", "▾", "折りたたみ"],
           ["rule", "➖", "水平線"],
           ["xpost", "𝕏", "X投稿"],
           ["video", "▶️", "動画"],
           ["toc", "📑", "目次"],
-          ["accordion", "▾", "折りたたみ"],
           ["linkCard", "🔗", "リンクカード"]
         ].forEach(([type, icon, label]) => {
           const button = document.createElement("button");
@@ -13933,7 +13934,7 @@ ${bodyHtml}
         beforeAfter: `<div data-inserted-component="beforeAfter" contenteditable="false" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0;"><div data-side-content-slot="true" contenteditable="true" style="padding:12px;background:#f4f6f8;border-radius:8px;"><strong>Before</strong><br>変更前を入力</div><div data-side-content-slot="true" contenteditable="true" style="padding:12px;background:#eef8f8;border-radius:8px;"><strong>After</strong><br>変更後を入力</div></div>`,
         code: `<div data-inserted-component="code" data-code-show-file-name="true" data-code-file-name="sample.txt" data-code-show-line-numbers="true" data-code-line-start="1" data-code-wrap-mode="scroll" data-code-collapsible="false" data-code-initially-open="true" style="margin:14px 0;border-radius:8px;overflow:hidden;background:#172033;color:#f8fafc;font-family:Consolas,'Courier New',monospace;"><div data-code-toolbar contenteditable="false" style="display:flex;align-items:center;justify-content:flex-start;gap:12px;padding:8px 12px;background:#263247;border-bottom:1px solid #475569;font-family:Meiryo,sans-serif;font-size:12px;"><span data-code-filename>sample.txt</span></div><details data-code-details open><summary data-code-summary contenteditable="false" style="display:none;padding:9px 12px;background:#263247;cursor:pointer;font-family:Meiryo,sans-serif;font-size:13px;">コードを表示</summary><div data-code-view style="display:grid;grid-template-columns:max-content minmax(0,1fr);overflow-x:auto;"><pre data-code-line-numbers contenteditable="false" aria-hidden="true" style="margin:0;padding:14px 10px 14px 12px;background:#111827;color:#64748b;text-align:right;line-height:1.6;user-select:none;">1</pre><pre data-code-content contenteditable="true" style="margin:0;padding:14px;min-width:max-content;background:#172033;color:#f8fafc;line-height:1.6;white-space:pre;outline:none;">コードを入力</pre></div></details></div>`,
         rule: `<hr data-inserted-component="rule" style="border:0;border-top:2px solid #cbd5e1;margin:18px 0;">`,
-        xpost: `<div data-inserted-component="xpost" data-xpost-count="1" data-embed-url="" data-embed-url2="" data-embed-url3="" data-xpost-caption="" data-xpost-caption2="" data-xpost-caption3="" data-xpost-side-content="text" data-xpost-side-image-url="" contenteditable="false" style="margin:6px 0;"><div data-embed-layout><div data-embed-slot="true">${embedPlaceholderHtml("𝕏", "設定メニューでX投稿のURLを入力してください", false)}</div><div data-embed-text data-side-content-slot="true" contenteditable="true" style="display:none;flex:1 1 0%;min-width:0;overflow-wrap:anywhere;word-break:break-word;white-space:normal;align-self:center;">投稿の横に文章を入力</div><div data-embed-side-image contenteditable="false" style="display:none;flex:1 1 0%;min-width:0;align-self:center;"></div></div></div>`,
+        xpost: `<div data-inserted-component="xpost" data-xpost-count="1" data-embed-url="" data-embed-url2="" data-embed-url3="" data-xpost-caption="" data-xpost-caption2="" data-xpost-caption3="" data-xpost-side-content="text" data-xpost-side-image-url="" contenteditable="false" style="margin:0 0 6px;"><div data-embed-layout><div data-embed-slot="true">${embedPlaceholderHtml("𝕏", "設定メニューでX投稿のURLを入力してください", false)}</div><div data-embed-text data-side-content-slot="true" contenteditable="true" style="display:none;flex:1 1 0%;min-width:0;overflow-wrap:anywhere;word-break:break-word;white-space:normal;align-self:center;">投稿の横に文章を入力</div><div data-embed-side-image contenteditable="false" style="display:none;flex:1 1 0%;min-width:0;align-self:center;"></div></div></div>`,
         video: `<div data-inserted-component="video" data-embed-url="" data-video-bottom-text="" data-video-bottom-html="" contenteditable="false" style="margin:14px 0;"><div data-embed-slot="true">${embedPlaceholderHtml("▶️", "動画のURL（YouTube・Vimeoなど）を設定してください")}</div></div>`,
         accordion: `<details data-inserted-component="accordion" data-accordion-preset="simple" data-accordion-icon="chevron" data-accordion-summary-background="#f8fafc" data-accordion-content-background="#ffffff" data-accordion-border="#cbd5e1" data-accordion-accent="#2563eb" data-accordion-text-color="#172033" data-accordion-radius="8" data-accordion-padding="14" contenteditable="false" style="margin:14px 0;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;overflow:hidden;"><summary data-accordion-summary contenteditable="true" style="display:list-item;padding:14px;background:#f8fafc;color:#2563eb;font-weight:700;cursor:pointer;list-style-position:inside;"><span data-accordion-icon contenteditable="false" aria-hidden="true" style="display:none;"></span><span data-accordion-title style="margin-left:8px;color:#172033;">詳しい内容を見る</span></summary><div data-accordion-content contenteditable="true" style="padding:14px;color:#172033;line-height:1.8;background:#ffffff;border-top:1px solid #cbd5e1;">ここに折りたたむ内容を入力します。</div></details>`,
         linkCard: `<div data-inserted-component="linkCard" data-link-card-preset="standard" data-link-card-url="https://example.com" data-link-card-image-url="" data-link-card-show-image="false" data-link-card-new-tab="true" data-link-card-button-label="リンクを開く" data-link-card-accent="#2563eb" data-link-card-background="#ffffff" data-link-card-border="#cbd5e1" data-link-card-text-color="#172033" data-link-card-radius="10" contenteditable="false" style="margin:14px 0;"><a data-link-card-anchor href="https://example.com" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:stretch;gap:0;color:#172033;text-decoration:none;border:1px solid #cbd5e1;border-radius:10px;background:#ffffff;overflow:hidden;"><span data-link-card-image-wrap contenteditable="false" style="display:none;flex:0 0 34%;max-width:220px;background:#f1f5f9;"><img data-link-card-image alt="" style="display:block;width:100%;height:100%;min-height:140px;object-fit:cover;"></span><span data-link-card-body style="display:flex;flex:1 1 auto;min-width:0;flex-direction:column;justify-content:center;padding:18px;"><strong data-link-card-title contenteditable="true" style="display:block;font-size:18px;line-height:1.5;">リンク先のタイトル</strong><span data-link-card-description contenteditable="true" style="display:block;margin-top:6px;color:#64748b;line-height:1.7;">リンク先の説明を入力します。</span><span data-link-card-action contenteditable="false" style="display:inline-flex;align-self:flex-start;margin-top:12px;color:#2563eb;font-weight:700;">リンクを開く →</span></span></a></div>`,
@@ -14154,7 +14155,7 @@ ${bodyHtml}
         ? [root]
         : Array.from(root?.querySelectorAll?.('[data-inserted-component="xpost"]') || []);
       components.forEach((component) => {
-        component.style.margin = "6px 0";
+        component.style.margin = "0 0 6px";
         component.querySelectorAll("blockquote").forEach((blockquote) => {
           blockquote.style.marginTop = "0";
           blockquote.style.marginBottom = "0";
