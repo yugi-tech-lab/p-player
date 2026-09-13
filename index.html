@@ -1384,6 +1384,17 @@
       outline-offset: -3px;
     }
 
+    .preview [data-inserted-component="xpost"] {
+      margin-top: 6px !important;
+      margin-bottom: 6px !important;
+    }
+
+    .preview [data-inserted-component="xpost"] blockquote,
+    .preview [data-inserted-component="xpost"] iframe {
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+    }
+
     .preview img[data-inserted-image],
     .preview [data-image-url-placeholder] {
       outline: 1px dashed #94a3b8;
@@ -5426,6 +5437,7 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
               </dialog>
               <button class="primary" id="copyButton" type="button">HTMLをコピー</button>
               <button class="secondary component-delete-button" id="previewComponentDeleteButton" type="button" title="選択中のパーツを削除" disabled>削除</button>
+              <button class="secondary" id="clearPreviewButton" type="button" title="プレビュー内のすべてのパーツをクリア">クリア</button>
               <button class="secondary" id="undoButton" type="button" title="元に戻す">戻す</button>
               <button class="secondary" id="redoButton" type="button" title="やり直す">やり直す</button>
               <button class="secondary" id="autosaveHistoryButton" type="button">自動保存から復元</button>
@@ -6329,8 +6341,8 @@ ${items}
           const tag = isHeader ? "th" : "td";
           const striped = options.striped && !isHeader && (rowIndex + 1) % 2 === 0;
           const bg = isHeader ? `background:${headerColor};color:white;font-weight:700;` : `background:${striped ? options.stripeColor : cellColor};`;
-          const height = options.rowHeight ? `height:${options.rowHeight}px;` : "";
-          const cellStyle = `border:${border};padding:${options.cellPadding}px ${options.cellPadding + 2}px;text-align:${align};${height}${bg}`;
+          const height = `height:${options.rowHeight || 24}px;`;
+          const cellStyle = `border:${border};padding:${options.cellPadding}px ${options.cellPadding + 2}px;min-width:48px;text-align:${align};${height}${bg}`;
           return `<${tag} style="${cellStyle}">${cell}</${tag}>`;
         }).join("\n")}
 </tr>`;
@@ -6850,6 +6862,7 @@ ${bodyHtml}
     }
 
     function render(options = {}) {
+      if (options.forceReset) previewIsCleared = formattedPreviewHtml === "";
       const currentComponents = Array.from(elements.preview.querySelectorAll("[data-inserted-component]"));
       const activeComponentIndex = activeInsertedComponent && elements.preview.contains(activeInsertedComponent)
         ? currentComponents.indexOf(activeInsertedComponent) : -1;
@@ -6862,7 +6875,7 @@ ${bodyHtml}
           preserveAllBodyContent: options.preserveAllBodyContent !== false
         };
       }
-      let html = formattedPreviewHtml || buildHtml();
+      let html = previewIsCleared ? "" : (formattedPreviewHtml || buildHtml());
       if (options.preserveHeadingContent && formattedPreviewHtml) {
         const currentHeading = elements.preview.querySelector("h2");
         const nextPreview = document.createElement("div");
@@ -6910,6 +6923,7 @@ ${bodyHtml}
       elements.preview.innerHTML = html;
       elements.preview.contentEditable = "true";
       ensureDocumentBlocks();
+      normalizeXPostSpacing(elements.preview);
       syncRuledCardMetricsForPreview();
       if (activeComponentIndex >= 0) {
         activeInsertedComponent = elements.preview.querySelectorAll("[data-inserted-component]")[activeComponentIndex] || null;
@@ -6958,9 +6972,18 @@ ${bodyHtml}
       }
     }
 
+    function ensureTableCellMinimumSize(table) {
+      table?.querySelectorAll("td, th").forEach((cell) => {
+        if (!cell.style.minWidth) cell.style.minWidth = "48px";
+        if (!cell.style.height) cell.style.height = "24px";
+      });
+    }
+
     function setupTableColumnResizeFor(table) {
       const firstRow = table?.rows?.[0];
-      if (!table || !firstRow || firstRow.cells.length < 2) return;
+      if (!table) return;
+      ensureTableCellMinimumSize(table);
+      if (!firstRow || firstRow.cells.length < 2) return;
       Array.from(firstRow.cells).forEach((cell, index) => {
         cell.style.cursor = index < firstRow.cells.length - 1 ? "col-resize" : "default";
         if (cell._resizeBound) return;
@@ -7048,6 +7071,7 @@ ${bodyHtml}
         componentProperties?._refreshCode?.(component, false);
       });
       formattedPreviewHtml = getPersistablePreviewHtml();
+      previewIsCleared = formattedPreviewHtml === "";
       elements.code.textContent = formatOutputHtml(formattedPreviewHtml);
       recordPreviewState(formattedPreviewHtml);
       updateComponentDeleteButtons();
@@ -7302,6 +7326,7 @@ ${bodyHtml}
 
     let savedPreviewRange = null;
     let activeInsertedComponent = null;
+    let previewIsCleared = false;
     let copiedComponentHtml = "";
     let copiedComponentType = "";
     let previewHistory = [];
@@ -8211,7 +8236,7 @@ ${bodyHtml}
     }
 
     function recordPreviewState(html) {
-      if (!html || previewHistory[previewHistoryIndex] === html) {
+      if (previewHistory[previewHistoryIndex] === html) {
         updateHistoryButtons();
         return;
       }
@@ -8224,6 +8249,7 @@ ${bodyHtml}
 
     function resetFormattedPreview() {
       formattedPreviewHtml = "";
+      previewIsCleared = false;
       savedPreviewRange = null;
       selectedTableCells = [];
       previewHistory = [];
@@ -10439,6 +10465,9 @@ ${bodyHtml}
         && nestedEditor !== sourceComponent
         && nestedEditor.contains(rangeBeforeList.endContainer)
       );
+      const isEmbedTextEditor = Boolean(nestedEditor?.matches(
+        "[data-embed-text], [data-xpost-caption], [data-video-bottom-text]"
+      ));
 
       const ordered = elements.listMarker.value === "decimal";
       const command = ordered ? "insertOrderedList" : "insertUnorderedList";
@@ -10453,6 +10482,10 @@ ${bodyHtml}
         list.style.listStyleType = elements.listMarker.value;
         if (isNestedComponentEditor) {
           list.removeAttribute("data-inserted-component");
+          if (isEmbedTextEditor) {
+            list.style.margin = "8px 0";
+            list.style.padding = "0 0 0 24px";
+          }
           activeInsertedComponent = sourceComponent;
         } else {
           list.dataset.insertedComponent = "list";
@@ -11058,13 +11091,13 @@ ${bodyHtml}
         <div class="list-settings-group"><strong>投稿</strong>
           <div class="row xpost-url-primary-row">
             <div class="field"><label for="xpostUrl">投稿URL 1</label><input id="xpostUrl" type="text" placeholder="https://x.com/user/status/..."></div>
-            <div class="field"><label for="xpostCaption">下部テキスト 1</label><input id="xpostCaption" type="text" placeholder="投稿の下に表示（プレビューでも編集可）"></div>
+            <div class="field" hidden><label for="xpostCaption">下部テキスト 1</label><input id="xpostCaption" type="text" placeholder="投稿の下に表示（プレビューでも編集可）"></div>
           </div>
           <div class="row xpost-additional-urls-row">
             <div class="field" data-xpost-url2-field style="display:none;"><label for="xpostUrl2">投稿URL 2</label><input id="xpostUrl2" type="text" placeholder="https://x.com/user/status/..."></div>
-            <div class="field" data-xpost-caption2-field style="display:none;"><label for="xpostCaption2">下部テキスト 2</label><input id="xpostCaption2" type="text" placeholder="投稿の下に表示（プレビューでも編集可）"></div>
+            <div class="field" data-xpost-caption2-field hidden><label for="xpostCaption2">下部テキスト 2</label><input id="xpostCaption2" type="text" placeholder="投稿の下に表示（プレビューでも編集可）"></div>
             <div class="field" data-xpost-url3-field style="display:none;"><label for="xpostUrl3">投稿URL 3</label><input id="xpostUrl3" type="text" placeholder="https://x.com/user/status/..."></div>
-            <div class="field" data-xpost-caption3-field style="display:none;"><label for="xpostCaption3">下部テキスト 3</label><input id="xpostCaption3" type="text" placeholder="投稿の下に表示（プレビューでも編集可）"></div>
+            <div class="field" data-xpost-caption3-field hidden><label for="xpostCaption3">下部テキスト 3</label><input id="xpostCaption3" type="text" placeholder="投稿の下に表示（プレビューでも編集可）"></div>
           </div>
           <div class="row xpost-display-settings-row">
             <div class="field"><label for="xpostCount">表示数</label><select id="xpostCount"><option value="1">1件</option><option value="2">2件</option><option value="3">3件</option></select></div>
@@ -11116,7 +11149,7 @@ ${bodyHtml}
         <div class="list-settings-group"><strong>動画</strong>
           <div class="row">
             <div class="field" style="flex:1 1 100%;"><label for="videoUrl">動画のURL</label><input id="videoUrl" type="text" placeholder="YouTube・Vimeo・mp4など"></div>
-            <div class="field" style="flex:1 1 100%;"><label for="videoBottomText">下部テキスト</label><input id="videoBottomText" type="text" placeholder="動画の下に表示（プレビューでも編集可）"></div>
+            <div class="field" style="flex:1 1 100%;" hidden><label for="videoBottomText">下部テキスト</label><input id="videoBottomText" type="text" placeholder="動画の下に表示（プレビューでも編集可）"></div>
           </div>
           <div class="row"><div class="field" style="flex:1 1 100%;"><p style="margin:0;color:#64748b;font-size:13px;">YouTube・VimeoはProtoPedia側の自動埋め込みで表示されるため、サイズ・縦横比・表示位置はProtoPedia側の仕様に従います（このツールでは調整できません）。</p></div></div>
         </div>`;
@@ -12583,8 +12616,9 @@ ${bodyHtml}
           component.querySelectorAll("td, th").forEach((cell) => {
             cell.style.border = `${borderWidth} ${borderStyle} #d9dee8`;
             cell.style.padding = `${Math.max(0, Number(elements.tableCellPadding.value) || 0)}px`;
+            cell.style.minWidth = "48px";
             cell.style.textAlign = elements.tableAlign.value;
-            cell.style.height = Number(elements.tableRowHeight.value) > 0 ? `${elements.tableRowHeight.value}px` : "";
+            cell.style.height = Number(elements.tableRowHeight.value) > 0 ? `${elements.tableRowHeight.value}px` : "24px";
             cell.style.backgroundColor = cell.tagName === "TH" ? tableHeaderColor : tableCellColor;
           });
           component.style.borderRadius = `${Math.max(0, Number(elements.tableRadius.value) || 0)}px`;
@@ -13303,7 +13337,7 @@ ${bodyHtml}
         beforeAfter: `<div data-inserted-component="beforeAfter" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0;"><div contenteditable="true" style="padding:12px;background:#f4f6f8;border-radius:8px;"><strong>Before</strong><br>変更前を入力</div><div contenteditable="true" style="padding:12px;background:#eef8f8;border-radius:8px;"><strong>After</strong><br>変更後を入力</div></div>`,
         code: `<div data-inserted-component="code" data-code-show-file-name="true" data-code-file-name="sample.txt" data-code-show-line-numbers="true" data-code-line-start="1" data-code-wrap-mode="scroll" data-code-collapsible="false" data-code-initially-open="true" style="margin:14px 0;border-radius:8px;overflow:hidden;background:#172033;color:#f8fafc;font-family:Consolas,'Courier New',monospace;"><div data-code-toolbar contenteditable="false" style="display:flex;align-items:center;justify-content:flex-start;gap:12px;padding:8px 12px;background:#263247;border-bottom:1px solid #475569;font-family:Meiryo,sans-serif;font-size:12px;"><span data-code-filename>sample.txt</span></div><details data-code-details open><summary data-code-summary contenteditable="false" style="display:none;padding:9px 12px;background:#263247;cursor:pointer;font-family:Meiryo,sans-serif;font-size:13px;">コードを表示</summary><div data-code-view style="display:grid;grid-template-columns:max-content minmax(0,1fr);overflow-x:auto;"><pre data-code-line-numbers contenteditable="false" aria-hidden="true" style="margin:0;padding:14px 10px 14px 12px;background:#111827;color:#64748b;text-align:right;line-height:1.6;user-select:none;">1</pre><pre data-code-content contenteditable="true" style="margin:0;padding:14px;min-width:max-content;background:#172033;color:#f8fafc;line-height:1.6;white-space:pre;outline:none;">コードを入力</pre></div></details></div>`,
         rule: `<hr data-inserted-component="rule" style="border:0;border-top:2px solid #cbd5e1;margin:18px 0;">`,
-        xpost: `<div data-inserted-component="xpost" data-xpost-count="1" data-embed-url="" data-embed-url2="" data-embed-url3="" data-xpost-caption="" data-xpost-caption2="" data-xpost-caption3="" data-xpost-side-content="text" data-xpost-side-image-url="" contenteditable="false" style="margin:14px 0;"><div data-embed-layout><div data-embed-slot="true">${embedPlaceholderHtml("𝕏", "設定メニューでX投稿のURLを入力してください", false)}</div><div data-embed-text contenteditable="true" style="display:none;flex:1 1 0%;min-width:0;overflow-wrap:anywhere;word-break:break-word;white-space:normal;align-self:center;">投稿の横に文章を入力</div><div data-embed-side-image contenteditable="false" style="display:none;flex:1 1 0%;min-width:0;align-self:center;"></div></div></div>`,
+        xpost: `<div data-inserted-component="xpost" data-xpost-count="1" data-embed-url="" data-embed-url2="" data-embed-url3="" data-xpost-caption="" data-xpost-caption2="" data-xpost-caption3="" data-xpost-side-content="text" data-xpost-side-image-url="" contenteditable="false" style="margin:6px 0;"><div data-embed-layout><div data-embed-slot="true">${embedPlaceholderHtml("𝕏", "設定メニューでX投稿のURLを入力してください", false)}</div><div data-embed-text contenteditable="true" style="display:none;flex:1 1 0%;min-width:0;overflow-wrap:anywhere;word-break:break-word;white-space:normal;align-self:center;">投稿の横に文章を入力</div><div data-embed-side-image contenteditable="false" style="display:none;flex:1 1 0%;min-width:0;align-self:center;"></div></div></div>`,
         video: `<div data-inserted-component="video" data-embed-url="" data-video-bottom-text="" data-video-bottom-html="" contenteditable="false" style="margin:14px 0;"><div data-embed-slot="true">${embedPlaceholderHtml("▶️", "動画のURL（YouTube・Vimeoなど）を設定してください")}</div></div>`,
         toc: `<nav data-inserted-component="toc" aria-label="目次" style="margin:14px 0;padding:14px 16px;border:1px solid #d9dee8;border-radius:8px;background:#fbfcff;">
           <div contenteditable="false" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
@@ -13505,12 +13539,26 @@ ${bodyHtml}
         html = buildVideoEmbedHtml(url) + buildVideoBottomTextHtml(bottomHtml, true);
       }
       slot.innerHTML = html;
+      if (type === "xpost") normalizeXPostSpacing(component);
       capturePreviewEdits();
       if (type === "xpost" && component.querySelector('a[href*="/status/"]')) {
         loadTwitterWidgetScript().then((twttr) => twttr?.widgets?.load(component)).catch(() => {
           setStatus("X投稿の埋め込みスクリプトを読み込めませんでした");
         });
       }
+    }
+
+    function normalizeXPostSpacing(root) {
+      const components = root?.matches?.('[data-inserted-component="xpost"]')
+        ? [root]
+        : Array.from(root?.querySelectorAll?.('[data-inserted-component="xpost"]') || []);
+      components.forEach((component) => {
+        component.style.margin = "6px 0";
+        component.querySelectorAll("blockquote").forEach((blockquote) => {
+          blockquote.style.marginTop = "0";
+          blockquote.style.marginBottom = "0";
+        });
+      });
     }
 
     // Heading ids use a simple, sequential "heading-N" scheme (rather than a
@@ -14310,6 +14358,23 @@ ${bodyHtml}
       updateHistoryButtons();
       setStatus("プレビューをやり直しました");
     }
+    function clearPreview() {
+      if (!window.confirm("プレビュー内のすべてのパーツと内容をクリアします。本当によろしいですか？")) return;
+      capturePreviewEdits();
+      selectedTableCells.forEach((cell) => cell.classList.remove("table-cell-selected"));
+      elements.preview.replaceChildren();
+      activeInsertedComponent = null;
+      activePreviewTable = null;
+      selectedTableCells = [];
+      savedPreviewRange = null;
+      const propertyDialog = document.querySelector(".component-property-dialog");
+      if (propertyDialog) propertyDialog._targetComponent = null;
+      updateDocumentPropertyScope(true);
+      document.querySelector(".inserted-component-properties")?._sync?.();
+      capturePreviewEdits();
+      setStatus("プレビューをクリアしました（戻すで復元できます）");
+    }
+    document.querySelector("#clearPreviewButton").addEventListener("click", clearPreview);
     document.querySelector("#undoButton").addEventListener("click", performPreviewUndo);
     document.querySelector("#redoButton").addEventListener("click", performPreviewRedo);
     document.addEventListener("keydown", (event) => {
@@ -15144,7 +15209,6 @@ ${bodyHtml}
 
     function performAutosave() {
       autosaveTimer = null;
-      if (!formattedPreviewHtml) return;
       const savedAt = Date.now();
       try {
         const previousRaw = localStorage.getItem(AUTOSAVE_STORAGE_KEY);
@@ -16208,6 +16272,7 @@ ${bodyHtml}
       previewActions.prepend(fileMenu);
 
       [
+        document.querySelector("#clearPreviewButton"),
         document.querySelector("#undoButton"),
         document.querySelector("#redoButton"),
         document.querySelector("#copyButton")
