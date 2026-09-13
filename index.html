@@ -12608,7 +12608,7 @@ ${bodyHtml}
           if (elements.tableStriped.checked) {
             Array.from(component.rows).forEach((row, index) => {
               if (index % 2 === 1) Array.from(row.cells).forEach((cell) => {
-                if (cell.tagName !== "TH") cell.style.backgroundColor = tableCellColor;
+                if (cell.tagName !== "TH") cell.style.backgroundColor = "#f3f4f6";
               });
             });
           }
@@ -14352,6 +14352,20 @@ ${bodyHtml}
       return table;
     }
 
+    function getPreviewTableCaretCell(table) {
+      const selection = window.getSelection();
+      const liveRange = selection.rangeCount && elements.preview.contains(selection.anchorNode)
+        ? selection.getRangeAt(0)
+        : null;
+      const range = savedPreviewRange && elements.preview.contains(savedPreviewRange.commonAncestorContainer)
+        ? savedPreviewRange
+        : liveRange;
+      const container = range?.startContainer;
+      const element = container?.nodeType === Node.ELEMENT_NODE ? container : container?.parentElement;
+      const cell = element?.closest?.("td, th");
+      return cell?.closest("table") === table ? cell : null;
+    }
+
     function parseCsv(text) {
       const rows = [];
       let row = [];
@@ -14871,10 +14885,16 @@ ${bodyHtml}
           setStatus("テーブルは最大20行です");
           return;
         }
+        const currentCell = getPreviewTableCaretCell(table);
+        const insertionIndex = currentCell
+          ? currentCell.parentElement.rowIndex + 1
+          : table.rows.length;
         const columnCount = table.rows[0]?.cells.length || 1;
-        const row = table.insertRow(-1);
-        const template = table.rows[table.rows.length - 2]?.cells[0];
+        const templateRow = table.rows[Math.min(insertionIndex, table.rows.length - 1)];
+        const templateCells = Array.from(templateRow?.cells || []);
+        const row = table.insertRow(insertionIndex);
         for (let index = 0; index < columnCount; index += 1) {
+          const template = templateCells[index] || templateCells[templateCells.length - 1];
           const cell = template ? template.cloneNode(true) : row.insertCell(-1);
           cell.textContent = "";
           if (template) row.appendChild(cell);
@@ -14892,11 +14912,16 @@ ${bodyHtml}
           setStatus("テーブルは最大6列です");
           return;
         }
+        const currentCell = getPreviewTableCaretCell(table);
+        const insertionIndex = currentCell
+          ? currentCell.cellIndex + 1
+          : (table.rows[0]?.cells.length || 0);
         Array.from(table.rows).forEach((row) => {
-          const template = row.cells[row.cells.length - 1];
+          const template = row.cells[insertionIndex]
+            || row.cells[Math.min(Math.max(0, insertionIndex - 1), row.cells.length - 1)];
           const cell = template ? template.cloneNode(true) : row.insertCell(-1);
           cell.textContent = "";
-          if (template) row.appendChild(cell);
+          if (template) row.insertBefore(cell, row.cells[insertionIndex] || null);
         });
       });
     });
