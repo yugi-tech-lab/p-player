@@ -5924,7 +5924,7 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
 
   <script src="./vendor/marked.umd.js"></script>
   <script>
-    const sampleImageSrc = "/pic/452e1bad-b00c-481e-aebf-701dcba2f9c2.png";
+    const sampleImageSrc = "/pic/6660e21c-e61b-4c2f-9604-1ee8b64fd819.png";
     const defaults = {
       preset: "story",
       blockType: "section",
@@ -7228,6 +7228,15 @@ ${bodyHtml}
     function formatOutputHtml(html) {
       const outputHolder = document.createElement("div");
       outputHolder.innerHTML = html;
+      // Embed URL cards are editor-only UI. Remove them globally before
+      // converting components as a safeguard in case contenteditable editing
+      // has moved a card outside its original video/X component wrapper.
+      outputHolder.querySelectorAll("[data-embed-url-input], [data-embed-apply-url]").forEach((control) => {
+        const card = control.closest("[data-embed-placeholder]") || control.closest('[contenteditable="false"]');
+        if (card && card !== outputHolder) card.remove();
+        else control.remove();
+      });
+      outputHolder.querySelectorAll("[data-embed-placeholder]").forEach((element) => element.remove());
       outputHolder.querySelectorAll('[data-inserted-component="xpost"]').forEach((component) => {
         const count = Math.max(1, Math.min(3, Number(component.dataset.xpostCount) || 1));
         const sideContentEnabled = count === 1 && component.dataset.xpostSideText === "true";
@@ -7279,12 +7288,17 @@ ${bodyHtml}
         const wrapper = document.createElement("div");
         if (sideContentEnabled && sideContentHtml) {
           const textValign = component.dataset.xpostTextVerticalAlign === "top" ? "flex-start" : "center";
+          const sideTextAlign = ["center", "right"].includes(component.dataset.xpostSideTextAlign)
+            ? component.dataset.xpostSideTextAlign : "left";
+          const sideTextFont = component.dataset.xpostSideTextFont || "inherit";
+          const sideTextSize = Math.max(8, Math.min(72, Number(component.dataset.xpostSideTextSize) || 16));
+          const sideTextColor = component.dataset.xpostSideTextColor || "#172033";
           // The video column's share of the row tracks the same percentage as the
           // "max width" scaling setting, so the text column isn't left oddly wide
           // (or cramped) next to a video that was scaled down (or up).
           const videoColumnPercent = Math.max(20, Math.min(70, widthPercent));
           const videoColumn = `<div style="flex:0 0 ${videoColumnPercent}%;min-width:0;">${blockquotes[0]}</div>`;
-          const contentColumn = `<div style="flex:1 1 0%;min-width:0;align-self:${textValign};">${sideContentHtml}</div>`;
+          const contentColumn = `<div style="flex:1 1 0%;min-width:0;align-self:${textValign};text-align:${sideTextAlign};font-family:${escapeHtml(sideTextFont)};font-size:${sideTextSize}px;color:${escapeHtml(sideTextColor)};">${sideContentHtml}</div>`;
           const columns = component.dataset.xpostTextSide === "left" ? contentColumn + videoColumn : videoColumn + contentColumn;
           wrapper.innerHTML = `<div style="display:flex;align-items:flex-start;gap:16px;">${columns}</div>${scriptHtml}<br>`;
         } else if (count > 1) {
@@ -7303,6 +7317,10 @@ ${bodyHtml}
           component.remove();
           return;
         }
+        const bottomText = component.querySelector("[data-video-bottom-text]")?.innerHTML
+          || component.dataset.videoBottomHtml
+          || escapeHtml(component.dataset.videoBottomText || "");
+        const bottomTextHtml = buildVideoBottomTextHtml(bottomText);
         // Same lesson as the X embed: ProtoPedia's article editor strips a pasted
         // <iframe> out of the HTML entirely, so the YouTube/Vimeo embed that
         // renders fine inside this tool never survives a copy-paste there.
@@ -7311,18 +7329,24 @@ ${bodyHtml}
         // links (mp4/webm/ogg) have no such auto-embed, so those still export
         // as an actual <video> tag and may need to be tested separately.
         if (youTubeEmbedUrl(url) || vimeoEmbedUrl(url)) {
-          const bottomText = component.querySelector("[data-video-bottom-text]")?.innerHTML
-            || component.dataset.videoBottomHtml
-            || escapeHtml(component.dataset.videoBottomText || "");
           const replacementNodes = [document.createTextNode(`\n\n${url}\n\n`)];
-          const bottomTextHtml = buildVideoBottomTextHtml(bottomText);
           if (bottomTextHtml) {
             const holder = document.createElement("div");
             holder.innerHTML = bottomTextHtml;
             replacementNodes.push(holder.firstElementChild);
           }
           component.replaceWith(...replacementNodes);
+          return;
         }
+        if (/^https:\/\/.+\.(mp4|webm|ogg)(\?.*)?$/i.test(url)) {
+          const holder = document.createElement("div");
+          holder.innerHTML = buildVideoEmbedHtml(url) + bottomTextHtml;
+          component.replaceWith(...Array.from(holder.childNodes));
+          return;
+        }
+        // Unsupported-video notices and their URL controls exist only to help
+        // editing in the local preview; they must never leak into copied HTML.
+        component.remove();
       });
       outputHolder.querySelectorAll('[data-inserted-component="accordion"]').forEach((component) => {
         const initiallyOpen = component.hasAttribute("data-accordion-initially-open")
@@ -8900,6 +8924,12 @@ ${bodyHtml}
 
       targets.forEach((target) => {
         target.style.textAlign = alignment;
+        if (target.matches?.("[data-embed-text]")) {
+          const component = target.closest('[data-inserted-component="xpost"]');
+          if (component) component.dataset.xpostSideTextAlign = alignment;
+          const control = document.querySelector("#xpostSideTextAlign");
+          if (control && component === getSelectedComponent()) control.value = alignment;
+        }
       });
       cleanupEmptyFormattingSpans();
       capturePreviewEdits();
@@ -10288,7 +10318,7 @@ ${bodyHtml}
     });
     elements.preview.addEventListener("keydown", (event) => {
       const caption = event.target.closest?.("figcaption, [data-image-caption]");
-      const isolatedEditor = caption || event.target.closest?.("[data-code-content]");
+      const isolatedEditor = caption || event.target.closest?.("[data-code-content], [data-embed-text]");
       if (isolatedEditor && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
         const range = document.createRange();
@@ -11159,10 +11189,10 @@ ${bodyHtml}
           <div class="row">
             <div class="field"><label for="listIndent">左インデント</label><div class="unit-input"><input id="listIndent" type="number" min="0" max="100" value="0"><span>px</span></div></div>
             <div class="field"><label for="listMarkerGap">記号との間隔</label><div class="unit-input"><input id="listMarkerGap" type="number" min="0" max="50" value="10"><span>px</span></div></div>
-            <div class="field"><label for="listItemGap">項目間余白</label><div class="unit-input"><input id="listItemGap" type="number" min="0" max="60" value="8"><span>px</span></div></div>
+            <div class="field"><label for="listItemGap">行間（項目間）</label><div class="unit-input"><input id="listItemGap" type="number" min="0" max="60" value="8" title="リストの各項目どうしの間隔"><span>px</span></div></div>
           </div>
           <div class="row">
-            <div class="field"><label for="listLineHeight">行間</label><input id="listLineHeight" type="number" min="1" max="3" step="0.1" value="1.7"></div>
+            <div class="field"><label for="listLineHeight">文字の行間</label><input id="listLineHeight" type="number" min="1" max="3" step="0.1" value="1.7" title="1つの項目内で文章が折り返したときの行間"></div>
             <div class="field"><label for="listVerticalAlign">記号の縦位置</label><select id="listVerticalAlign"><option value="flex-start">上</option><option value="center">中央</option></select></div>
           </div>
         </div>
@@ -11412,6 +11442,11 @@ ${bodyHtml}
             <div class="field" data-xpost-sidecontent-field style="display:none;"><label for="xpostSideContent">隣接内容</label><select id="xpostSideContent"><option value="text">テキスト</option><option value="image">画像</option></select></div>
             <div class="field" data-xpost-textside-field style="display:none;"><label for="xpostTextSide">コンテンツの位置</label><select id="xpostTextSide"><option value="right">投稿の右</option><option value="left">投稿の左</option></select></div>
             <div class="field" data-xpost-textvalign-field style="display:none;"><label for="xpostTextVerticalAlign">コンテンツの高さ</label><select id="xpostTextVerticalAlign"><option value="top">上寄せ</option><option value="center">中央寄せ</option></select></div>
+            <div class="field" data-xpost-textalign-field style="display:none;"><label for="xpostSideTextAlign">文字揃え</label><select id="xpostSideTextAlign"><option value="left">左揃え</option><option value="center">中央揃え</option><option value="right">右揃え</option></select></div>
+            <div class="field" data-xpost-textfont-field style="display:none;"><label for="xpostSideTextFont">フォント</label><select id="xpostSideTextFont"><option value="inherit">標準</option><option value="'Yu Gothic UI','Hiragino Kaku Gothic ProN',Meiryo,sans-serif">ゴシック</option><option value="'Yu Mincho','Hiragino Mincho ProN',serif">明朝</option><option value="'BIZ UDPGothic','BIZ UDPゴシック',sans-serif">BIZ UDPゴシック</option><option value="Consolas,'Courier New',monospace">等幅</option></select></div>
+            <div class="field" data-xpost-textsize-field style="display:none;"><label for="xpostSideTextSize">文字サイズ</label><div class="unit-input"><input id="xpostSideTextSize" type="number" min="8" max="72" value="16"><span>px</span></div></div>
+            <div class="field" data-xpost-textcolor-field style="display:none;"><label for="xpostSideTextColor">文字色</label><input id="xpostSideTextColor" type="color" value="#172033"></div>
+            <div class="field" data-xpost-textreset-field style="display:none;"><label>一括操作</label><button class="secondary" id="xpostSideTextReset" type="button">装飾をリセット</button></div>
             <div class="field" data-xpost-sideimage-field style="display:none;"><label for="xpostSideImageUrl">画像URLまたはMarkdown</label><input id="xpostSideImageUrl" type="text" placeholder="https://... または ![](URL)"></div>
           </div>
         </div>`;
@@ -11431,7 +11466,12 @@ ${bodyHtml}
         sideContent: xpostPropertyBlock.querySelector("#xpostSideContent"),
         sideImageUrl: xpostPropertyBlock.querySelector("#xpostSideImageUrl"),
         textSide: xpostPropertyBlock.querySelector("#xpostTextSide"),
-        textVerticalAlign: xpostPropertyBlock.querySelector("#xpostTextVerticalAlign")
+        textVerticalAlign: xpostPropertyBlock.querySelector("#xpostTextVerticalAlign"),
+        sideTextAlign: xpostPropertyBlock.querySelector("#xpostSideTextAlign"),
+        sideTextFont: xpostPropertyBlock.querySelector("#xpostSideTextFont"),
+        sideTextSize: xpostPropertyBlock.querySelector("#xpostSideTextSize"),
+        sideTextColor: xpostPropertyBlock.querySelector("#xpostSideTextColor"),
+        sideTextReset: xpostPropertyBlock.querySelector("#xpostSideTextReset")
       };
       const xpostUrl2Field = xpostPropertyBlock.querySelector("[data-xpost-url2-field]");
       const xpostUrl3Field = xpostPropertyBlock.querySelector("[data-xpost-url3-field]");
@@ -11443,6 +11483,11 @@ ${bodyHtml}
       const xpostSideImageField = xpostPropertyBlock.querySelector("[data-xpost-sideimage-field]");
       const xpostTextSideField = xpostPropertyBlock.querySelector("[data-xpost-textside-field]");
       const xpostTextValignField = xpostPropertyBlock.querySelector("[data-xpost-textvalign-field]");
+      const xpostTextAlignField = xpostPropertyBlock.querySelector("[data-xpost-textalign-field]");
+      const xpostTextFontField = xpostPropertyBlock.querySelector("[data-xpost-textfont-field]");
+      const xpostTextSizeField = xpostPropertyBlock.querySelector("[data-xpost-textsize-field]");
+      const xpostTextColorField = xpostPropertyBlock.querySelector("[data-xpost-textcolor-field]");
+      const xpostTextResetField = xpostPropertyBlock.querySelector("[data-xpost-textreset-field]");
       const videoPropertyBlock = document.createElement("div");
       videoPropertyBlock.className = "field list-component-settings video-component-settings";
       videoPropertyBlock.innerHTML = `<label>動画</label>
@@ -11983,11 +12028,20 @@ ${bodyHtml}
             ? component.dataset.xpostAlign : "left";
           const sideContent = postCount === 1 && component.dataset.xpostSideText === "true";
           const sideContentType = component.dataset.xpostSideContent === "image" ? "image" : "text";
+          const sideTextElement = component.querySelector("[data-embed-text]");
           xpostControls.sideText.checked = sideContent;
           xpostControls.sideContent.value = sideContentType;
           xpostControls.sideImageUrl.value = component.dataset.xpostSideImageUrl || "";
           xpostControls.textSide.value = component.dataset.xpostTextSide === "left" ? "left" : "right";
           xpostControls.textVerticalAlign.value = component.dataset.xpostTextVerticalAlign === "top" ? "top" : "center";
+          const savedSideTextAlign = component.dataset.xpostSideTextAlign || sideTextElement?.style.textAlign;
+          xpostControls.sideTextAlign.value = ["center", "right"].includes(savedSideTextAlign) ? savedSideTextAlign : "left";
+          const savedSideTextFont = component.dataset.xpostSideTextFont || sideTextElement?.style.fontFamily || "inherit";
+          xpostControls.sideTextFont.value = Array.from(xpostControls.sideTextFont.options).some((option) => option.value === savedSideTextFont)
+            ? savedSideTextFont : "inherit";
+          xpostControls.sideTextSize.value = component.dataset.xpostSideTextSize
+            || String(parseInt(sideTextElement?.style.fontSize, 10) || 16);
+          xpostControls.sideTextColor.value = colorValue(component.dataset.xpostSideTextColor || sideTextElement?.style.color, "#172033");
           xpostUrl2Field.style.display = postCount >= 2 ? "" : "none";
           xpostUrl3Field.style.display = postCount >= 3 ? "" : "none";
           xpostCaption2Field.style.display = postCount >= 2 ? "" : "none";
@@ -11998,6 +12052,11 @@ ${bodyHtml}
           xpostSideImageField.style.display = sideContent && sideContentType === "image" ? "" : "none";
           xpostTextSideField.style.display = sideContent ? "" : "none";
           xpostTextValignField.style.display = sideContent ? "" : "none";
+          xpostTextAlignField.style.display = sideContent && sideContentType === "text" ? "" : "none";
+          xpostTextFontField.style.display = sideContent && sideContentType === "text" ? "" : "none";
+          xpostTextSizeField.style.display = sideContent && sideContentType === "text" ? "" : "none";
+          xpostTextColorField.style.display = sideContent && sideContentType === "text" ? "" : "none";
+          xpostTextResetField.style.display = sideContent && sideContentType === "text" ? "" : "none";
           xpostAlignField.style.display = sideContent ? "none" : "";
         }
         if (componentType === "video") {
@@ -13213,6 +13272,10 @@ ${bodyHtml}
           const sideImageUrl = normalizeLinkUrl(getImageSource(xpostControls.sideImageUrl.value || ""));
           const textSide = xpostControls.textSide.value === "left" ? "left" : "right";
           const textVerticalAlign = xpostControls.textVerticalAlign.value === "top" ? "top" : "center";
+          const sideTextAlign = ["center", "right"].includes(xpostControls.sideTextAlign.value) ? xpostControls.sideTextAlign.value : "left";
+          const sideTextFont = xpostControls.sideTextFont.value || "inherit";
+          const sideTextSize = Math.max(8, Math.min(72, Number(xpostControls.sideTextSize.value) || 16));
+          const sideTextColor = xpostControls.sideTextColor.value || "#172033";
           component.dataset.xpostCount = String(count);
           component.dataset.embedUrl = url;
           component.dataset.embedUrl2 = url2;
@@ -13236,8 +13299,16 @@ ${bodyHtml}
           component.dataset.xpostSideImageUrl = sideImageUrl;
           component.dataset.xpostTextSide = textSide;
           component.dataset.xpostTextVerticalAlign = textVerticalAlign;
+          component.dataset.xpostSideTextAlign = sideTextAlign;
+          component.dataset.xpostSideTextFont = sideTextFont;
+          component.dataset.xpostSideTextSize = String(sideTextSize);
+          component.dataset.xpostSideTextColor = sideTextColor;
           renderEmbedComponent(component);
           applyXPostLayout(component);
+          const sideTextElement = component.querySelector("[data-embed-text]");
+          if (event?.target === xpostControls.sideTextFont) clearNestedTextProperty(sideTextElement, "font-family");
+          if (event?.target === xpostControls.sideTextSize) clearNestedTextProperty(sideTextElement, "font-size");
+          if (event?.target === xpostControls.sideTextColor) clearNestedTextProperty(sideTextElement, "color");
         }
         if (type === "video") {
           const url = normalizeLinkUrl(videoControls.url.value || "");
@@ -13870,16 +13941,20 @@ ${bodyHtml}
       });
       [xpostControls, videoControls].forEach((controlSet) => {
         Object.values(controlSet).forEach((input) => {
+          if (input === xpostControls.sideTextReset) return;
           input.classList.add("component-property-input");
           input.addEventListener("input", applyComponentSpecificSettings);
-          input.addEventListener("change", applyComponentSpecificSettings);
         });
       });
+      xpostControls.sideTextReset.addEventListener("click", () => {
+        const component = getTargetComponent();
+        if (component?.dataset.insertedComponent !== "xpost" || !resetXPostSideTextFormatting(component)) return;
+        sync();
+        capturePreviewEdits();
+        setStatus("横テキスト全体の装飾をリセットしました");
+      });
       [xpostControls.count, xpostControls.mode, xpostControls.sideText, xpostControls.sideContent].forEach((input) => {
-        input.addEventListener("change", () => {
-          applyComponentSpecificSettings();
-          sync();
-        });
+        input.addEventListener("change", sync);
       });
       elements.preview.addEventListener("toggle", (event) => {
         const component = event.target;
@@ -13963,7 +14038,7 @@ ${bodyHtml}
         beforeAfter: `<div data-inserted-component="beforeAfter" contenteditable="false" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0;"><div data-side-content-slot="true" contenteditable="true" style="padding:12px;background:#f4f6f8;border-radius:8px;"><strong>Before</strong><br>変更前を入力</div><div data-side-content-slot="true" contenteditable="true" style="padding:12px;background:#eef8f8;border-radius:8px;"><strong>After</strong><br>変更後を入力</div></div>`,
         code: `<div data-inserted-component="code" data-code-show-file-name="true" data-code-file-name="sample.txt" data-code-show-line-numbers="true" data-code-line-start="1" data-code-wrap-mode="scroll" data-code-collapsible="false" data-code-initially-open="true" style="margin:14px 0;border-radius:8px;overflow:hidden;background:#172033;color:#f8fafc;font-family:Consolas,'Courier New',monospace;"><div data-code-toolbar contenteditable="false" style="display:flex;align-items:center;justify-content:flex-start;gap:12px;padding:8px 12px;background:#263247;border-bottom:1px solid #475569;font-family:Meiryo,sans-serif;font-size:12px;"><span data-code-filename>sample.txt</span></div><details data-code-details open><summary data-code-summary contenteditable="false" style="display:none;padding:9px 12px;background:#263247;cursor:pointer;font-family:Meiryo,sans-serif;font-size:13px;">コードを表示</summary><div data-code-view style="display:grid;grid-template-columns:max-content minmax(0,1fr);overflow-x:auto;"><pre data-code-line-numbers contenteditable="false" aria-hidden="true" style="margin:0;padding:14px 10px 14px 12px;background:#111827;color:#64748b;text-align:right;line-height:1.6;user-select:none;">1</pre><pre data-code-content contenteditable="true" style="margin:0;padding:14px;min-width:max-content;background:#172033;color:#f8fafc;line-height:1.6;white-space:pre;outline:none;">コードを入力</pre></div></details></div>`,
         rule: `<hr data-inserted-component="rule" style="border:0;border-top:2px solid #cbd5e1;margin:18px 0;">`,
-        xpost: `<div data-inserted-component="xpost" data-xpost-count="1" data-embed-url="" data-embed-url2="" data-embed-url3="" data-xpost-caption="" data-xpost-caption2="" data-xpost-caption3="" data-xpost-side-content="text" data-xpost-side-image-url="" contenteditable="false" style="margin:0 0 6px;"><div data-embed-layout><div data-embed-slot="true">${embedPlaceholderHtml("𝕏", "設定メニューでX投稿のURLを入力してください", false)}</div><div data-embed-text data-side-content-slot="true" contenteditable="true" style="display:none;flex:1 1 0%;min-width:0;overflow-wrap:anywhere;word-break:break-word;white-space:normal;align-self:center;">投稿の横に文章を入力</div><div data-embed-side-image contenteditable="false" style="display:none;flex:1 1 0%;min-width:0;align-self:center;"></div></div></div>`,
+        xpost: `<div data-inserted-component="xpost" data-xpost-count="1" data-embed-url="" data-embed-url2="" data-embed-url3="" data-xpost-caption="" data-xpost-caption2="" data-xpost-caption3="" data-xpost-side-content="text" data-xpost-side-image-url="" data-xpost-side-text-align="left" data-xpost-side-text-font="inherit" data-xpost-side-text-size="16" data-xpost-side-text-color="#172033" contenteditable="false" style="margin:0 0 6px;"><div data-embed-layout><div data-embed-slot="true">${embedPlaceholderHtml("𝕏", "設定メニューでX投稿のURLを入力してください", false)}</div><div data-embed-text data-side-content-slot="true" contenteditable="true" style="display:none;flex:1 1 0%;min-width:0;overflow-wrap:anywhere;word-break:break-word;white-space:normal;align-self:center;text-align:left;font-family:inherit;font-size:16px;color:#172033;">投稿の横に文章を入力</div><div data-embed-side-image contenteditable="false" style="display:none;flex:1 1 0%;min-width:0;align-self:center;"></div></div></div>`,
         video: `<div data-inserted-component="video" data-embed-url="" data-video-bottom-text="" data-video-bottom-html="" contenteditable="false" style="margin:14px 0;"><div data-embed-slot="true">${embedPlaceholderHtml("▶️", "動画のURL（YouTube・Vimeoなど）を設定してください")}</div></div>`,
         accordion: `<details data-inserted-component="accordion" data-accordion-preset="simple" data-accordion-icon="chevron" data-accordion-initially-open="false" data-accordion-summary-background="#f8fafc" data-accordion-content-background="#ffffff" data-accordion-border="#cbd5e1" data-accordion-accent="#2563eb" data-accordion-text-color="#172033" data-accordion-radius="8" data-accordion-padding="14" contenteditable="false" style="margin:14px 0;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;overflow:hidden;"><summary data-accordion-summary contenteditable="true" style="display:list-item;padding:14px;background:#f8fafc;color:#2563eb;font-weight:700;cursor:pointer;list-style-position:inside;"><span data-accordion-icon contenteditable="false" aria-hidden="true" style="display:none;"></span><span data-accordion-title contenteditable="true" style="margin-left:8px;color:#172033;">詳しい内容を見る</span></summary><div data-accordion-content contenteditable="true" style="padding:14px;color:#172033;line-height:1.8;background:#ffffff;border-top:1px solid #cbd5e1;">ここに折りたたむ内容を入力します。</div></details>`,
         linkCard: `<div data-inserted-component="linkCard" data-link-card-preset="standard" data-link-card-url="https://example.com" data-link-card-image-url="" data-link-card-show-image="false" data-link-card-new-tab="true" data-link-card-button-label="リンクを開く" data-link-card-accent="#2563eb" data-link-card-background="#ffffff" data-link-card-border="#cbd5e1" data-link-card-text-color="#172033" data-link-card-radius="10" contenteditable="false" style="margin:14px 0;"><a data-link-card-anchor href="https://example.com" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:stretch;gap:0;color:#172033;text-decoration:none;border:1px solid #cbd5e1;border-radius:10px;background:#ffffff;overflow:hidden;"><span data-link-card-image-wrap contenteditable="false" style="display:none;flex:0 0 34%;max-width:220px;background:#f1f5f9;"><img data-link-card-image alt="" style="display:block;width:100%;height:100%;min-height:140px;object-fit:cover;"></span><span data-link-card-body style="display:flex;flex:1 1 auto;min-width:0;flex-direction:column;justify-content:center;padding:18px;"><strong data-link-card-title contenteditable="true" style="display:block;font-size:18px;line-height:1.5;">リンク先のタイトル</strong><span data-link-card-description contenteditable="true" style="display:block;margin-top:6px;color:#64748b;line-height:1.7;">リンク先の説明を入力します。</span><span data-link-card-action contenteditable="false" style="display:inline-flex;align-self:flex-start;margin-top:12px;color:#2563eb;font-weight:700;">リンクを開く →</span></span></a></div>`,
@@ -13984,7 +14059,7 @@ ${bodyHtml}
           <input type="text" data-embed-url-input placeholder="https://..." style="flex:1 1 260px;min-width:200px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
           <button type="button" data-embed-apply-url style="cursor:pointer;padding:7px 16px;border-radius:6px;border:1px solid #0f8b8d;background:#0f8b8d;color:#fff;font-size:13px;">反映</button>
         </div>` : "";
-      return `<div contenteditable="false" style="border:1px dashed #94a3b8;border-radius:12px;padding:24px 20px;text-align:center;color:#64748b;background:#f8fafc;">
+      return `<div data-embed-placeholder contenteditable="false" style="border:1px dashed #94a3b8;border-radius:12px;padding:24px 20px;text-align:center;color:#64748b;background:#f8fafc;">
         <div style="font-size:28px;line-height:1;margin-bottom:10px;">${escapeHtml(icon)}</div>
         <div style="${showUrlInput ? "margin-bottom:14px;" : ""}font-size:14px;">${escapeHtml(message)}</div>
         ${urlInputHtml}
@@ -14001,11 +14076,13 @@ ${bodyHtml}
       const host = parsed.hostname.replace(/^www\./, "");
       let videoId = "";
       if (host === "youtu.be") {
-        videoId = parsed.pathname.slice(1);
-      } else if (host === "youtube.com" || host === "m.youtube.com" || host === "music.youtube.com") {
+        videoId = parsed.pathname.split("/").filter(Boolean)[0] || "";
+      } else if (["youtube.com", "m.youtube.com", "music.youtube.com", "youtube-nocookie.com"].includes(host)) {
         if (parsed.pathname === "/watch") videoId = parsed.searchParams.get("v") || "";
         else if (parsed.pathname.startsWith("/shorts/")) videoId = parsed.pathname.split("/")[2] || "";
         else if (parsed.pathname.startsWith("/embed/")) videoId = parsed.pathname.split("/")[2] || "";
+        else if (parsed.pathname.startsWith("/live/")) videoId = parsed.pathname.split("/")[2] || "";
+        else if (parsed.pathname.startsWith("/v/")) videoId = parsed.pathname.split("/")[2] || "";
       }
       videoId = (videoId || "").split(/[?&]/)[0].trim();
       return /^[\w-]{6,20}$/.test(videoId) ? `https://www.youtube.com/embed/${videoId}` : "";
@@ -14037,6 +14114,7 @@ ${bodyHtml}
     }
 
     let twitterWidgetScriptPromise = null;
+    const embedRenderVersions = new WeakMap();
     function loadTwitterWidgetScript() {
       if (window.twttr?.widgets) return Promise.resolve(window.twttr);
       if (!twitterWidgetScriptPromise) {
@@ -14125,6 +14203,8 @@ ${bodyHtml}
     function renderEmbedComponent(component) {
       const type = component?.dataset.insertedComponent;
       if (!["xpost", "video"].includes(type)) return;
+      const renderVersion = (embedRenderVersions.get(component) || 0) + 1;
+      embedRenderVersions.set(component, renderVersion);
       // Target a slot that's never itself replaced, not the embedded content
       // directly — Twitter's widgets.js replaces the whole <blockquote> with its
       // own generated iframe once it processes a tweet, so anything we mark
@@ -14170,10 +14250,16 @@ ${bodyHtml}
         html = buildVideoEmbedHtml(url) + buildVideoBottomTextHtml(bottomHtml, true);
       }
       slot.innerHTML = html;
+      if (type === "video" && (youTubeEmbedUrl(url) || vimeoEmbedUrl(url) || /^https:\/\/.+\.(mp4|webm|ogg)(\?.*)?$/i.test(url))) {
+        component.querySelectorAll("[data-embed-placeholder]").forEach((element) => element.remove());
+      }
       if (type === "xpost") normalizeXPostSpacing(component);
       capturePreviewEdits();
       if (type === "xpost" && component.querySelector('a[href*="/status/"]')) {
-        loadTwitterWidgetScript().then((twttr) => twttr?.widgets?.load(component)).catch(() => {
+        loadTwitterWidgetScript().then((twttr) => {
+          if (!component.isConnected || embedRenderVersions.get(component) !== renderVersion) return;
+          twttr?.widgets?.load(component);
+        }).catch(() => {
           setStatus("X投稿の埋め込みスクリプトを読み込めませんでした");
         });
       }
@@ -14263,6 +14349,48 @@ ${bodyHtml}
       setStatus(entries.length ? `目次を更新しました（見出し${entries.length}件）` : "見出しが見つかりませんでした");
     }
 
+    function clearNestedTextProperty(root, property) {
+      if (!root) return;
+      root.querySelectorAll("[style]").forEach((element) => {
+        element.style.removeProperty(property);
+        if (!element.getAttribute("style")) element.removeAttribute("style");
+      });
+      const fontAttribute = property === "font-family" ? "face" : property === "font-size" ? "size" : property === "color" ? "color" : "";
+      if (fontAttribute) {
+        root.querySelectorAll(`font[${fontAttribute}]`).forEach((font) => {
+          font.removeAttribute(fontAttribute);
+          if (!font.attributes.length) font.replaceWith(...font.childNodes);
+        });
+      }
+    }
+
+    function resetXPostSideTextFormatting(component) {
+      const text = component?.querySelector("[data-embed-text]");
+      if (!text) return false;
+      Array.from(text.querySelectorAll("b,strong,i,em,u,s,strike,font,mark,a,[data-inline-code]")).reverse().forEach((element) => {
+        if (!element.matches("[data-list-marker-part]")) element.replaceWith(...element.childNodes);
+      });
+      text.querySelectorAll("[style]").forEach((element) => {
+        if (element.matches("[data-list-marker-part]")) return;
+        ["font-family", "font-size", "font-weight", "font-style", "text-decoration", "text-shadow", "color", "background-color"].forEach((property) => {
+          element.style.removeProperty(property);
+        });
+        if (!element.getAttribute("style")) element.removeAttribute("style");
+      });
+      component.dataset.xpostSideTextFont = "inherit";
+      component.dataset.xpostSideTextSize = "16";
+      component.dataset.xpostSideTextColor = "#172033";
+      text.style.fontFamily = "inherit";
+      text.style.fontSize = "16px";
+      text.style.fontWeight = "normal";
+      text.style.fontStyle = "normal";
+      text.style.textDecoration = "none";
+      text.style.textShadow = "none";
+      text.style.color = "#172033";
+      text.style.backgroundColor = "transparent";
+      return true;
+    }
+
     function applyXPostLayout(component) {
       const layout = component?.querySelector("[data-embed-layout]");
       const slot = component?.querySelector("[data-embed-slot]");
@@ -14293,6 +14421,11 @@ ${bodyHtml}
         const contentAlign = component.dataset.xpostTextVerticalAlign === "top" ? "flex-start" : "center";
         text.style.display = sideContentType === "text" ? "block" : "none";
         text.style.alignSelf = contentAlign;
+        text.style.textAlign = ["center", "right"].includes(component.dataset.xpostSideTextAlign)
+          ? component.dataset.xpostSideTextAlign : "left";
+        text.style.fontFamily = component.dataset.xpostSideTextFont || "inherit";
+        text.style.fontSize = `${Math.max(8, Math.min(72, Number(component.dataset.xpostSideTextSize) || 16))}px`;
+        text.style.color = component.dataset.xpostSideTextColor || "#172033";
         sideImage.style.display = sideContentType === "image" ? "block" : "none";
         sideImage.style.flex = "1 1 0%";
         sideImage.style.minWidth = "0";
@@ -14338,6 +14471,10 @@ ${bodyHtml}
       if (type === "xpost") component.dataset.xpostSideImageUrl ||= "";
       if (type === "xpost") component.dataset.xpostTextSide ||= "right";
       if (type === "xpost") component.dataset.xpostTextVerticalAlign ||= "center";
+      if (type === "xpost") component.dataset.xpostSideTextAlign ||= "left";
+      if (type === "xpost") component.dataset.xpostSideTextFont ||= "inherit";
+      if (type === "xpost") component.dataset.xpostSideTextSize ||= "16";
+      if (type === "xpost") component.dataset.xpostSideTextColor ||= "#172033";
       renderEmbedComponent(component);
       document.querySelector(".inserted-component-properties")?._sync?.();
       setStatus(type === "xpost" ? "X投稿を埋め込みました" : "動画を埋め込みました");
