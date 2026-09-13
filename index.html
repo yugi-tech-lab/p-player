@@ -1395,6 +1395,11 @@
       margin-bottom: 0 !important;
     }
 
+    .preview [data-embedded-component].is-embedded-component-active {
+      outline: 2px solid rgba(15, 139, 141, .65);
+      outline-offset: 3px;
+    }
+
     .preview img[data-inserted-image],
     .preview [data-image-url-placeholder] {
       outline: 1px dashed #94a3b8;
@@ -6427,9 +6432,9 @@ ${linkedImage}
       const textBlock = elements.includeSpeechBubble.checked
         ? `<div style="position:relative;display:flex;align-items:${bubbleVertical};align-self:${textVertical};justify-content:${bubbleHorizontal};flex:1;min-width:0;min-height:120px;background:#ffffff;border:2px solid #d9dee8;border-radius:${bubbleRadius};padding:18px 20px;box-shadow:0 6px 16px rgba(17,24,39,0.1);${bubbleShape === "burst" ? "clip-path:polygon(0 12%,8% 4%,16% 8%,25% 0,34% 7%,44% 2%,54% 8%,64% 0,74% 7%,84% 3%,94% 10%,100% 5%,96% 20%,100% 32%,96% 44%,100% 56%,95% 68%,100% 80%,92% 92%,80% 88%,70% 100%,58% 93%,47% 100%,36% 93%,25% 100%,15% 92%,5% 96%,8% 82%,0 70%,5% 58%,0 45%,5% 32%;" : ""}">
 <span style="position:absolute;${tailCross}${tailSide};width:${tailSize}px;height:${tailSize}px;background:#ffffff;border-left:2px solid #d9dee8;border-bottom:2px solid #d9dee8;transform:rotate(${45 + tailAngle}deg);"></span>
-<div style="position:relative;width:100%;min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word;white-space:normal;">${text}</div>
+<div data-side-content-slot="true" style="position:relative;width:100%;min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word;white-space:normal;">${text}</div>
 </div>`
-        : `<div style="flex:1 1 0%;min-width:0;max-width:100%;align-self:${textVertical};overflow-wrap:anywhere;word-break:break-word;white-space:normal;">${text}</div>`;
+        : `<div data-side-content-slot="true" style="flex:1 1 0%;min-width:0;max-width:100%;align-self:${textVertical};overflow-wrap:anywhere;word-break:break-word;white-space:normal;">${text}</div>`;
       return `<div style="display:flex;flex-direction:${position};align-items:flex-start;gap:20px;">
 <div style="flex:0 0 ${Math.max(10, Math.min(80, Number(elements.imageTextWidth.value) || 40))}%;max-width:100%;">${imageBlock}</div>
 ${textBlock}
@@ -6923,10 +6928,14 @@ ${bodyHtml}
       elements.preview.innerHTML = html;
       elements.preview.contentEditable = "true";
       ensureDocumentBlocks();
+      normalizeEmbeddedSideContent(elements.preview);
       normalizeXPostSpacing(elements.preview);
       syncRuledCardMetricsForPreview();
       if (activeComponentIndex >= 0) {
         activeInsertedComponent = elements.preview.querySelectorAll("[data-inserted-component]")[activeComponentIndex] || null;
+        if (activeInsertedComponent?.dataset.embeddedComponent) {
+          activeInsertedComponent.classList.add("is-embedded-component-active");
+        }
       }
       if (activeTableIndex >= 0) {
         activePreviewTable = elements.preview.querySelectorAll("table")[activeTableIndex] || null;
@@ -7033,8 +7042,8 @@ ${bodyHtml}
     function getPersistablePreviewHtml() {
       syncRuledCardMetricsForPreview();
       const clone = elements.preview.cloneNode(true);
-      clone.querySelectorAll(".is-document-block-active, .table-cell-selected").forEach((element) => {
-        element.classList.remove("is-document-block-active", "table-cell-selected");
+      clone.querySelectorAll(".is-document-block-active, .is-embedded-component-active, .table-cell-selected").forEach((element) => {
+        element.classList.remove("is-document-block-active", "is-embedded-component-active", "table-cell-selected");
         if (!element.className) element.removeAttribute("class");
       });
       clone.querySelectorAll("[data-resize-bound]").forEach((element) => element.removeAttribute("data-resize-bound"));
@@ -7066,6 +7075,7 @@ ${bodyHtml}
 
     function capturePreviewEdits() {
       const componentProperties = document.querySelector(".inserted-component-properties");
+      normalizeEmbeddedSideContent(elements.preview);
       syncEditableMediaTexts();
       elements.preview.querySelectorAll('[data-inserted-component="code"]').forEach((component) => {
         componentProperties?._refreshCode?.(component, false);
@@ -7083,6 +7093,8 @@ ${bodyHtml}
       outputHolder.innerHTML = html;
       outputHolder.querySelectorAll('[data-inserted-component="xpost"]').forEach((component) => {
         const count = Math.max(1, Math.min(3, Number(component.dataset.xpostCount) || 1));
+        const sideContentEnabled = count === 1 && component.dataset.xpostSideText === "true";
+        const sideContentType = component.dataset.xpostSideContent === "image" ? "image" : "text";
         const captionHtmlAt = (index, text) => {
           const rendered = component.querySelector(`[data-xpost-caption-index="${index}"]`);
           if (rendered) return rendered.innerHTML;
@@ -7117,12 +7129,12 @@ ${bodyHtml}
           : `class="twitter-video" data-width="${XPOST_EMBED_PIXEL_CEILING}"`;
         const blockquotes = items.map((item) => {
           const safeUrl = escapeHtml(item.url);
-          const captionHtml = buildXPostCaptionHtml(item.caption, false, item.index);
+          const captionHtml = sideContentEnabled && sideContentType === "text" && item.index === 0
+            ? ""
+            : buildXPostCaptionHtml(item.caption, false, item.index);
           return `<blockquote ${blockquoteAttrs}${alignAttr}><a href="${safeUrl}">${safeUrl}</a></blockquote>${captionHtml}`;
         });
         const scriptHtml = `<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"><\/script>`;
-        const sideContentEnabled = count === 1 && component.dataset.xpostSideText === "true";
-        const sideContentType = component.dataset.xpostSideContent === "image" ? "image" : "text";
         const sideImageUrl = normalizeLinkUrl(component.dataset.xpostSideImageUrl || "");
         const sideContentHtml = sideContentType === "image"
           ? (sideImageUrl ? `<img src="${escapeHtml(sideImageUrl)}" alt="" style="display:block;width:100%;height:auto;max-width:100%;border-radius:8px;">` : "")
@@ -7185,6 +7197,15 @@ ${bodyHtml}
       outputHolder.querySelectorAll("[data-heading-content], [data-heading-prefix]").forEach((element) => {
         element.removeAttribute("data-heading-content");
         element.removeAttribute("data-heading-prefix");
+      });
+      outputHolder.querySelectorAll("[data-embedded-component]").forEach((element) => {
+        element.removeAttribute("data-embedded-component");
+        element.removeAttribute("data-inserted-component");
+        element.classList.remove("is-embedded-component-active");
+        if (!element.className) element.removeAttribute("class");
+      });
+      outputHolder.querySelectorAll("[data-side-content-slot]").forEach((element) => {
+        element.removeAttribute("data-side-content-slot");
       });
       outputHolder.querySelectorAll("[contenteditable]").forEach((element) => element.removeAttribute("contenteditable"));
       outputHolder.querySelectorAll(".is-document-block-active, .table-cell-selected").forEach((element) => {
@@ -7763,6 +7784,10 @@ ${bodyHtml}
     }
 
     function deselectActiveComponent() {
+      elements.preview.querySelectorAll(".is-embedded-component-active").forEach((component) => {
+        component.classList.remove("is-embedded-component-active");
+        if (!component.className) component.removeAttribute("class");
+      });
       if (!activeInsertedComponent) return;
       activeInsertedComponent = null;
       const propertyDialog = document.querySelector(".component-property-dialog");
@@ -7855,10 +7880,13 @@ ${bodyHtml}
       if (moveUpButton) moveUpButton.disabled = selectedIndex <= 0;
       if (moveDownButton) moveDownButton.disabled = selectedIndex < 0 || selectedIndex >= siblings.length - 1;
       const selectedInsideBody = Boolean(selectedComponent?.parentElement?.closest?.('[data-inserted-component="body"]'));
+      const selectedInsideSideContent = selectedComponent?.dataset?.embeddedComponent === "list";
       const previousTextButton = document.querySelector("#propertyAddPreviousText");
       const followingTextButton = document.querySelector("#propertyAddFollowingText");
       if (previousTextButton) previousTextButton.textContent = selectedInsideBody ? "前に行" : "前に本文";
       if (followingTextButton) followingTextButton.textContent = selectedInsideBody ? "後ろに行" : "後に本文";
+      if (previousTextButton) previousTextButton.disabled = !hasSelectedComponent || selectedInsideSideContent;
+      if (followingTextButton) followingTextButton.disabled = !hasSelectedComponent || selectedInsideSideContent;
       const selectedBody = selectedComponent?.dataset?.insertedComponent === "body"
         ? selectedComponent : null;
       const previousBody = selectedBody?.previousElementSibling?.dataset?.insertedComponent === "body"
@@ -8129,6 +8157,11 @@ ${bodyHtml}
         const endComment = Array.from(elements.preview.childNodes).find((node) => node.nodeType === Node.COMMENT_NODE && node.nodeValue.includes("p-player 終了"));
         elements.preview.insertBefore(pastedComponent, endComment || null);
       }
+      if (pastedType === "list" && pastedComponent.closest("[data-side-content-slot]")) {
+        pastedComponent.dataset.embeddedComponent = "list";
+      } else {
+        pastedComponent.removeAttribute("data-embedded-component");
+      }
       activeInsertedComponent = pastedComponent;
       activePreviewTable = pastedComponent.dataset.insertedComponent === "table" ? pastedComponent : null;
       selectedTableCells.forEach((cell) => cell.classList.remove("table-cell-selected"));
@@ -8290,6 +8323,26 @@ ${bodyHtml}
       const source = list.querySelector("[data-list-content]") || list.querySelector("li");
       const sourceStyle = source ? getComputedStyle(source) : null;
       const paragraph = document.createElement("div");
+      const sideContentSlot = list.dataset.embeddedComponent === "list"
+        ? list.closest("[data-side-content-slot], [data-embed-text]")
+        : null;
+      if (sideContentSlot) {
+        paragraph.contentEditable = "true";
+        paragraph.appendChild(document.createElement("br"));
+        if (sourceStyle?.fontFamily) paragraph.style.fontFamily = sourceStyle.fontFamily;
+        list.after(paragraph);
+        list.classList.remove("is-embedded-component-active");
+        if (!list.className) list.removeAttribute("class");
+        const owner = sideContentSlot.closest("[data-inserted-component]");
+        activeInsertedComponent = owner || null;
+        const propertyDialog = document.querySelector(".component-property-dialog");
+        if (propertyDialog && owner) propertyDialog._targetComponent = owner;
+        placeCaretAtStart(paragraph);
+        capturePreviewEdits();
+        document.querySelector(".inserted-component-properties")?._sync?.();
+        setStatus("横コンテンツ内に文章を追加しました");
+        return paragraph;
+      }
       paragraph.dataset.insertedComponent = "body";
       paragraph.contentEditable = "true";
       paragraph.appendChild(document.createElement("br"));
@@ -10465,8 +10518,8 @@ ${bodyHtml}
         && nestedEditor !== sourceComponent
         && nestedEditor.contains(rangeBeforeList.endContainer)
       );
-      const isEmbedTextEditor = Boolean(nestedEditor?.matches(
-        "[data-embed-text], [data-xpost-caption], [data-video-bottom-text]"
+      const isSideContentEditor = Boolean(nestedEditor?.matches(
+        "[data-side-content-slot], [data-embed-text]"
       ));
 
       const ordered = elements.listMarker.value === "decimal";
@@ -10481,16 +10534,26 @@ ${bodyHtml}
       if (list) {
         list.style.listStyleType = elements.listMarker.value;
         if (isNestedComponentEditor) {
-          list.removeAttribute("data-inserted-component");
-          if (isEmbedTextEditor) {
+          if (isSideContentEditor) {
+            list.dataset.insertedComponent = "list";
+            list.dataset.embeddedComponent = "list";
             list.style.margin = "8px 0";
             list.style.padding = "0 0 0 24px";
+            activeInsertedComponent = list;
+          } else {
+            list.removeAttribute("data-inserted-component");
+            list.removeAttribute("data-embedded-component");
+            activeInsertedComponent = sourceComponent;
           }
-          activeInsertedComponent = sourceComponent;
         } else {
           list.dataset.insertedComponent = "list";
           activeInsertedComponent = list;
         }
+        elements.preview.querySelectorAll(".is-embedded-component-active").forEach((item) => {
+          item.classList.remove("is-embedded-component-active");
+          if (!item.className) item.removeAttribute("class");
+        });
+        if (list.dataset.embeddedComponent) list.classList.add("is-embedded-component-active");
         document.querySelector(".inserted-component-properties")?._sync?.();
       }
       capturePreviewEdits();
@@ -11384,7 +11447,9 @@ ${bodyHtml}
         } else {
           imagePairCountField.after(imageCaptionToggleField);
         }
-        name.textContent = `${componentTypeNames[componentType] || "パーツ"}を編集中`;
+        name.textContent = component.dataset.embeddedComponent
+          ? `横コンテンツ内の${componentTypeNames[componentType] || "パーツ"}を編集中`
+          : `${componentTypeNames[componentType] || "パーツ"}を編集中`;
         updateComponentDeleteButtons();
         refreshCustomPresetOptions();
         const canConvertImageComponent = ["image", "imageText"].includes(componentType);
@@ -12126,7 +12191,8 @@ ${bodyHtml}
         const listRadius = Math.max(0, Math.min(40, Number(listControls.radius.value) || 0));
         const indent = Math.max(0, Math.min(100, Number(listControls.indent.value) || 0));
         component.style.listStyle = "none";
-        component.style.margin = `14px 0 14px ${indent}px`;
+        const verticalMargin = component.dataset.embeddedComponent ? 8 : 14;
+        component.style.margin = `${verticalMargin}px 0 ${verticalMargin}px ${indent}px`;
         component.style.padding = `${listPadding}px`;
         component.style.backgroundColor = listBackground;
         component.style.border = listControls.borderStyle.value === "none"
@@ -13332,12 +13398,12 @@ ${bodyHtml}
         qa: `<div data-inserted-component="qa" data-qa-preset="standard" data-qa-frame-style="question" data-qa-background="#ffffff" data-qa-border="#cbd5e1" data-qa-border-width="1" data-qa-radius="0" data-qa-padding="18" data-qa-question-color="#0f766e" data-qa-answer-color="#334155" data-qa-question-size="18" data-qa-answer-size="16" data-qa-question-weight="700" data-qa-label-style="plain" data-qa-label-position="inline" style="margin:14px 0;padding:0;background:transparent;border:0;border-radius:0;overflow:visible;"><div data-qa-question="true" contenteditable="false" style="display:flex;align-items:flex-start;gap:10px;font-weight:700;font-size:18px;line-height:1.55;color:#0f766e;padding:18px;background:#ffffff;border:1px solid #cbd5e1;border-radius:0;"><span data-qa-label="true" contenteditable="false" aria-hidden="true" style="display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-width:22px;padding:3px 0;color:#0f766e;font-size:14px;font-weight:800;line-height:1;">Q</span><span data-qa-content="true" contenteditable="true" style="display:block;flex:1 1 auto;min-width:0;overflow-wrap:anywhere;word-break:break-word;">質問を入力</span></div><div data-qa-answer="true" contenteditable="false" style="display:flex;align-items:flex-start;gap:10px;margin-top:10px;padding-top:0;padding-left:19px;border-top:0;color:#334155;font-size:16px;line-height:1.75;"><span data-qa-label="true" contenteditable="false" aria-hidden="true" style="display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-width:22px;padding:3px 0;color:#334155;font-size:14px;font-weight:800;line-height:1;">A</span><span data-qa-content="true" contenteditable="true" style="display:block;flex:1 1 auto;min-width:0;overflow-wrap:anywhere;word-break:break-word;">回答を入力</span></div></div>`,
         table: insertedTableHtml(),
         image: `<figure data-inserted-component="image" data-image-caption="false" data-image-auto-height="false" contenteditable="false" style="margin:14px 0;text-align:center;"><img data-inserted-image="true" src="${escapeHtml(sampleImageSrc)}" alt="" style="display:block;width:100%;height:240px;object-fit:contain;"></figure>`,
-        imageText: `<div data-inserted-component="imageText" data-speech-bubble="false" data-image-auto-height="false" style="display:flex;width:100%;max-width:100%;box-sizing:border-box;gap:16px;align-items:center;margin:14px 0;"><div contenteditable="false" style="flex:0 0 40%;min-width:0;"><img data-inserted-image="true" src="${escapeHtml(sampleImageSrc)}" alt="" style="display:block;width:100%;height:240px;object-fit:contain;"></div><div contenteditable="true" style="flex:1 1 0%;min-width:0;max-width:100%;align-self:center;overflow-wrap:anywhere;word-break:break-word;white-space:normal;">画像の横に文章を入力</div></div>`,
+        imageText: `<div data-inserted-component="imageText" data-speech-bubble="false" data-image-auto-height="false" contenteditable="false" style="display:flex;width:100%;max-width:100%;box-sizing:border-box;gap:16px;align-items:center;margin:14px 0;"><div contenteditable="false" style="flex:0 0 40%;min-width:0;"><img data-inserted-image="true" src="${escapeHtml(sampleImageSrc)}" alt="" style="display:block;width:100%;height:240px;object-fit:contain;"></div><div data-side-content-slot="true" contenteditable="true" style="flex:1 1 0%;min-width:0;max-width:100%;align-self:center;overflow-wrap:anywhere;word-break:break-word;white-space:normal;">画像の横に文章を入力</div></div>`,
         imagePair: `<div data-inserted-component="imagePair" data-image-pair-count="2" data-image-auto-height="false" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0;"><div contenteditable="false" style="min-width:0;"><img data-inserted-image="true" src="${escapeHtml(sampleImageSrc)}" alt="" style="display:block;width:100%;height:240px;object-fit:contain;"></div><div contenteditable="false" style="min-width:0;"><img data-inserted-image="true" src="${escapeHtml(sampleImageSrc)}" alt="" style="display:block;width:100%;height:240px;object-fit:contain;"></div></div>`,
         beforeAfter: `<div data-inserted-component="beforeAfter" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0;"><div contenteditable="true" style="padding:12px;background:#f4f6f8;border-radius:8px;"><strong>Before</strong><br>変更前を入力</div><div contenteditable="true" style="padding:12px;background:#eef8f8;border-radius:8px;"><strong>After</strong><br>変更後を入力</div></div>`,
         code: `<div data-inserted-component="code" data-code-show-file-name="true" data-code-file-name="sample.txt" data-code-show-line-numbers="true" data-code-line-start="1" data-code-wrap-mode="scroll" data-code-collapsible="false" data-code-initially-open="true" style="margin:14px 0;border-radius:8px;overflow:hidden;background:#172033;color:#f8fafc;font-family:Consolas,'Courier New',monospace;"><div data-code-toolbar contenteditable="false" style="display:flex;align-items:center;justify-content:flex-start;gap:12px;padding:8px 12px;background:#263247;border-bottom:1px solid #475569;font-family:Meiryo,sans-serif;font-size:12px;"><span data-code-filename>sample.txt</span></div><details data-code-details open><summary data-code-summary contenteditable="false" style="display:none;padding:9px 12px;background:#263247;cursor:pointer;font-family:Meiryo,sans-serif;font-size:13px;">コードを表示</summary><div data-code-view style="display:grid;grid-template-columns:max-content minmax(0,1fr);overflow-x:auto;"><pre data-code-line-numbers contenteditable="false" aria-hidden="true" style="margin:0;padding:14px 10px 14px 12px;background:#111827;color:#64748b;text-align:right;line-height:1.6;user-select:none;">1</pre><pre data-code-content contenteditable="true" style="margin:0;padding:14px;min-width:max-content;background:#172033;color:#f8fafc;line-height:1.6;white-space:pre;outline:none;">コードを入力</pre></div></details></div>`,
         rule: `<hr data-inserted-component="rule" style="border:0;border-top:2px solid #cbd5e1;margin:18px 0;">`,
-        xpost: `<div data-inserted-component="xpost" data-xpost-count="1" data-embed-url="" data-embed-url2="" data-embed-url3="" data-xpost-caption="" data-xpost-caption2="" data-xpost-caption3="" data-xpost-side-content="text" data-xpost-side-image-url="" contenteditable="false" style="margin:6px 0;"><div data-embed-layout><div data-embed-slot="true">${embedPlaceholderHtml("𝕏", "設定メニューでX投稿のURLを入力してください", false)}</div><div data-embed-text contenteditable="true" style="display:none;flex:1 1 0%;min-width:0;overflow-wrap:anywhere;word-break:break-word;white-space:normal;align-self:center;">投稿の横に文章を入力</div><div data-embed-side-image contenteditable="false" style="display:none;flex:1 1 0%;min-width:0;align-self:center;"></div></div></div>`,
+        xpost: `<div data-inserted-component="xpost" data-xpost-count="1" data-embed-url="" data-embed-url2="" data-embed-url3="" data-xpost-caption="" data-xpost-caption2="" data-xpost-caption3="" data-xpost-side-content="text" data-xpost-side-image-url="" contenteditable="false" style="margin:6px 0;"><div data-embed-layout><div data-embed-slot="true">${embedPlaceholderHtml("𝕏", "設定メニューでX投稿のURLを入力してください", false)}</div><div data-embed-text data-side-content-slot="true" contenteditable="true" style="display:none;flex:1 1 0%;min-width:0;overflow-wrap:anywhere;word-break:break-word;white-space:normal;align-self:center;">投稿の横に文章を入力</div><div data-embed-side-image contenteditable="false" style="display:none;flex:1 1 0%;min-width:0;align-self:center;"></div></div></div>`,
         video: `<div data-inserted-component="video" data-embed-url="" data-video-bottom-text="" data-video-bottom-html="" contenteditable="false" style="margin:14px 0;"><div data-embed-slot="true">${embedPlaceholderHtml("▶️", "動画のURL（YouTube・Vimeoなど）を設定してください")}</div></div>`,
         toc: `<nav data-inserted-component="toc" aria-label="目次" style="margin:14px 0;padding:14px 16px;border:1px solid #d9dee8;border-radius:8px;background:#fbfcff;">
           <div contenteditable="false" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
@@ -13508,6 +13574,8 @@ ${bodyHtml}
       let html;
       if (type === "xpost") {
         const count = Math.max(1, Math.min(3, Number(component.dataset.xpostCount) || 1));
+        const sideText = count === 1 && component.dataset.xpostSideText === "true";
+        const sideContentType = component.dataset.xpostSideContent === "image" ? "image" : "text";
         const urls = [url, component.dataset.embedUrl2 || "", component.dataset.embedUrl3 || ""].slice(0, count);
         const captions = [
           component.dataset.xpostCaption || "",
@@ -13519,11 +13587,12 @@ ${bodyHtml}
           const htmlKey = index ? `xpostCaptionHtml${index + 1}` : "xpostCaptionHtml";
           return component.hasAttribute(htmlAttribute) ? component.dataset[htmlKey] || "" : escapeHtml(caption);
         });
-        const blockquotes = urls.map((item, index) =>
-          buildXPostEmbedHtml(item, component.dataset.xpostMode, component.dataset.xpostAlign)
-          + buildXPostCaptionHtml(captionHtmlValues[index], true, index)
-        );
-        const sideText = count === 1 && component.dataset.xpostSideText === "true";
+        const blockquotes = urls.map((item, index) => {
+          const captionHtml = sideText && sideContentType === "text" && index === 0
+            ? ""
+            : buildXPostCaptionHtml(captionHtmlValues[index], true, index);
+          return buildXPostEmbedHtml(item, component.dataset.xpostMode, component.dataset.xpostAlign) + captionHtml;
+        });
         if (count > 1) {
           const columns = blockquotes.map((blockquote) => `<div style="flex:1 1 0%;min-width:0;">${blockquote}</div>`).join("");
           html = `<div data-xpost-grid style="display:flex;align-items:flex-start;gap:12px;width:100%;">${columns}</div>`;
@@ -13557,6 +13626,32 @@ ${bodyHtml}
         component.querySelectorAll("blockquote").forEach((blockquote) => {
           blockquote.style.marginTop = "0";
           blockquote.style.marginBottom = "0";
+        });
+      });
+    }
+
+    function normalizeEmbeddedSideContent(root) {
+      const imageTextComponents = root?.matches?.('[data-inserted-component="imageText"]')
+        ? [root]
+        : Array.from(root?.querySelectorAll?.('[data-inserted-component="imageText"]') || []);
+      imageTextComponents.forEach((component) => {
+        component.contentEditable = "false";
+        const sideContent = Array.from(component.children).find((child, index) => (
+          index > 0 && child.matches?.('[contenteditable="true"]')
+        ));
+        if (sideContent) {
+          sideContent.dataset.sideContentSlot = "true";
+          sideContent.contentEditable = "true";
+        }
+      });
+      const slots = root?.matches?.("[data-side-content-slot], [data-embed-text]")
+        ? [root]
+        : Array.from(root?.querySelectorAll?.("[data-side-content-slot], [data-embed-text]") || []);
+      slots.forEach((slot) => {
+        slot.dataset.sideContentSlot = "true";
+        slot.querySelectorAll("ul, ol").forEach((list) => {
+          list.dataset.insertedComponent = "list";
+          list.dataset.embeddedComponent = "list";
         });
       });
     }
@@ -14680,7 +14775,12 @@ ${bodyHtml}
         deselectActiveComponent();
         return;
       }
+      elements.preview.querySelectorAll(".is-embedded-component-active").forEach((item) => {
+        item.classList.remove("is-embedded-component-active");
+        if (!item.className) item.removeAttribute("class");
+      });
       activeInsertedComponent = component;
+      if (component.dataset.embeddedComponent) component.classList.add("is-embedded-component-active");
       if (["heading", "body"].includes(component.dataset.insertedComponent)) {
         activePreviewTable = null;
         selectedTableCells.forEach((cell) => cell.classList.remove("table-cell-selected"));
