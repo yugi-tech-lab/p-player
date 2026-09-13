@@ -7324,6 +7324,12 @@ ${bodyHtml}
           component.replaceWith(...replacementNodes);
         }
       });
+      outputHolder.querySelectorAll('[data-inserted-component="accordion"]').forEach((component) => {
+        const initiallyOpen = component.hasAttribute("data-accordion-initially-open")
+          ? component.dataset.accordionInitiallyOpen === "true"
+          : component.hasAttribute("open");
+        component.toggleAttribute("open", initiallyOpen);
+      });
       // The "見出しを取得" button only makes sense inside this editor — it has
       // nothing to regenerate itself against once exported.
       outputHolder.querySelectorAll("[data-toc-refresh]").forEach((element) => element.remove());
@@ -10253,6 +10259,12 @@ ${bodyHtml}
       if (body) syncRuledCardMetrics(body);
     }, true);
     elements.preview.addEventListener("input", (event) => {
+      const accordionTitle = event.target.closest?.("[data-accordion-title]");
+      const accordionComponent = accordionTitle?.closest?.('[data-inserted-component="accordion"]');
+      if (accordionComponent) {
+        const input = document.querySelector("#accordionTitle");
+        if (input && getSelectedComponent() === accordionComponent) input.value = accordionTitle.textContent;
+      }
       const xpostText = event.target.closest?.("[data-xpost-caption]");
       const component = xpostText?.closest?.('[data-inserted-component="xpost"]');
       if (component) {
@@ -11217,6 +11229,7 @@ ${bodyHtml}
           <div class="row">
             <div class="field"><label for="compareGap">間隔</label><div class="unit-input"><input id="compareGap" type="number" min="0" max="60" value="12"><span>px</span></div></div>
             <div class="field"><label class="check-item"><input id="compareArrow" type="checkbox">中央に矢印</label></div>
+            <div class="field"><label for="compareArrowThickness">矢印の太さ</label><select id="compareArrowThickness"><option value="1">標準</option><option value="2">太い</option><option value="3">より太い</option><option value="4">極太</option></select></div>
             <div class="field"><button class="secondary" id="compareSwap" type="button">左右を入れ替え</button></div>
           </div>
         </div>
@@ -11251,6 +11264,7 @@ ${bodyHtml}
         align: comparePropertyBlock.querySelector("#compareTextAlign"),
         gap: comparePropertyBlock.querySelector("#compareGap"),
         arrow: comparePropertyBlock.querySelector("#compareArrow"),
+        arrowThickness: comparePropertyBlock.querySelector("#compareArrowThickness"),
         swap: comparePropertyBlock.querySelector("#compareSwap"),
         beforeBackground: comparePropertyBlock.querySelector("#compareBeforeBackground"),
         beforeBackgroundText: comparePropertyBlock.querySelector("#compareBeforeBackgroundText"),
@@ -11448,6 +11462,7 @@ ${bodyHtml}
       accordionPropertyBlock.className = "field list-component-settings accordion-component-settings";
       accordionPropertyBlock.innerHTML = `<label>折りたたみ設定</label>
         <div class="list-settings-group"><strong>開閉・デザイン</strong>
+          <div class="field"><label for="accordionTitle">見出しテキスト</label><input id="accordionTitle" type="text" value="詳しい内容を見る" placeholder="見出しを入力"></div>
           <div class="row">
             <div class="field"><label for="accordionPreset">スタイル</label><select id="accordionPreset"><option value="simple">シンプル</option><option value="accent">アクセント</option><option value="soft">やわらか</option><option value="dark">ダーク</option><option value="custom">カスタム</option></select></div>
             <div class="field"><label for="accordionIcon">開閉記号</label><select id="accordionIcon"><option value="chevron">矢印</option><option value="none">なし</option></select></div>
@@ -11471,7 +11486,7 @@ ${bodyHtml}
         </div>`;
       videoPropertyBlock.after(accordionPropertyBlock);
       const accordionControls = {
-        preset: accordionPropertyBlock.querySelector("#accordionPreset"), icon: accordionPropertyBlock.querySelector("#accordionIcon"), initiallyOpen: accordionPropertyBlock.querySelector("#accordionInitiallyOpen"),
+        title: accordionPropertyBlock.querySelector("#accordionTitle"), preset: accordionPropertyBlock.querySelector("#accordionPreset"), icon: accordionPropertyBlock.querySelector("#accordionIcon"), initiallyOpen: accordionPropertyBlock.querySelector("#accordionInitiallyOpen"),
         summaryBackground: accordionPropertyBlock.querySelector("#accordionSummaryBackground"), summaryBackgroundText: accordionPropertyBlock.querySelector("#accordionSummaryBackgroundText"),
         contentBackground: accordionPropertyBlock.querySelector("#accordionContentBackground"), contentBackgroundText: accordionPropertyBlock.querySelector("#accordionContentBackgroundText"),
         textColor: accordionPropertyBlock.querySelector("#accordionTextColor"), textColorText: accordionPropertyBlock.querySelector("#accordionTextColorText"),
@@ -11901,6 +11916,9 @@ ${bodyHtml}
           compareControls.align.value = component.dataset.compareAlign || beforeCard?.style.textAlign || "left";
           compareControls.gap.value = component.dataset.compareGap || String(parseInt(component.style.gap, 10) || 12);
           compareControls.arrow.checked = component.dataset.compareArrow === "true";
+          compareControls.arrowThickness.value = ["1", "2", "3", "4"].includes(component.dataset.compareArrowThickness)
+            ? component.dataset.compareArrowThickness : "1";
+          compareControls.arrowThickness.disabled = !compareControls.arrow.checked;
           setColorControl(compareControls.beforeBackground, compareControls.beforeBackgroundText, component.dataset.compareBeforeBackground || beforeCard?.style.backgroundColor || "#f4f6f8");
           setColorControl(compareControls.afterBackground, compareControls.afterBackgroundText, component.dataset.compareAfterBackground || afterCard?.style.backgroundColor || "#eef8f8");
           setColorControl(compareControls.borderColor, compareControls.borderColorText, component.dataset.compareBorderColor || beforeCard?.style.borderColor || "#d9dee8");
@@ -11989,9 +12007,13 @@ ${bodyHtml}
         if (componentType === "accordion") {
           const summary = component.querySelector(":scope > [data-accordion-summary]");
           const content = component.querySelector(":scope > [data-accordion-content]");
+          const title = summary?.querySelector(":scope > [data-accordion-title]");
+          accordionControls.title.value = title?.textContent || "";
           accordionControls.preset.value = component.dataset.accordionPreset || "custom";
           accordionControls.icon.value = component.dataset.accordionIcon || "chevron";
-          accordionControls.initiallyOpen.checked = component.open;
+          accordionControls.initiallyOpen.checked = component.hasAttribute("data-accordion-initially-open")
+            ? component.dataset.accordionInitiallyOpen === "true"
+            : component.open;
           setColorControl(accordionControls.summaryBackground, accordionControls.summaryBackgroundText, component.dataset.accordionSummaryBackground || summary?.style.backgroundColor || "#f8fafc");
           setColorControl(accordionControls.contentBackground, accordionControls.contentBackgroundText, component.dataset.accordionContentBackground || content?.style.backgroundColor || "#ffffff");
           setColorControl(accordionControls.textColor, accordionControls.textColorText, component.dataset.accordionTextColor || summary?.style.color || "#172033");
@@ -12589,6 +12611,8 @@ ${bodyHtml}
         const [beforeCard, afterCard] = cards;
         const layout = compareControls.layout.value;
         const gap = Math.max(0, Math.min(60, Number(compareControls.gap.value) || 0));
+        const arrowThickness = Math.max(1, Math.min(4, Number(compareControls.arrowThickness.value) || 1));
+        compareControls.arrowThickness.disabled = !compareControls.arrow.checked;
         const borderWidth = Math.max(0, Math.min(8, Number(compareControls.borderWidth.value) || 0));
         const radius = Math.max(0, Math.min(40, Number(compareControls.radius.value) || 0));
         const padding = Math.max(0, Math.min(60, Number(compareControls.padding.value) || 0));
@@ -12613,7 +12637,9 @@ ${bodyHtml}
           arrow.style.justifySelf = "center";
           arrow.style.color = afterTitleColor;
           arrow.style.fontSize = "1.5em";
-          arrow.style.fontWeight = "700";
+          arrow.style.fontWeight = arrowThickness >= 3 ? "900" : "700";
+          arrow.style.webkitTextStroke = arrowThickness > 1 ? `${(arrowThickness - 1) * 0.55}px currentColor` : "0";
+          arrow.style.paintOrder = "stroke fill";
           afterCard.before(arrow);
         } else {
           arrow?.remove();
@@ -12647,6 +12673,7 @@ ${bodyHtml}
         component.dataset.compareAlign = compareControls.align.value;
         component.dataset.compareGap = String(gap);
         component.dataset.compareArrow = String(compareControls.arrow.checked);
+        component.dataset.compareArrowThickness = String(arrowThickness);
         component.dataset.compareBeforeBackground = beforeBackground;
         component.dataset.compareAfterBackground = afterBackground;
         component.dataset.compareBorderColor = borderColor;
@@ -12861,6 +12888,7 @@ ${bodyHtml}
         component.dataset.accordionBorder = border;
         component.dataset.accordionRadius = String(radius);
         component.dataset.accordionPadding = String(padding);
+        component.dataset.accordionInitiallyOpen = String(accordionControls.initiallyOpen.checked);
         component.open = accordionControls.initiallyOpen.checked;
         component.style.border = `1px solid ${border}`;
         component.style.borderRadius = `${radius}px`;
@@ -12871,6 +12899,7 @@ ${bodyHtml}
         summary.style.color = accent;
         const title = summary.querySelector(":scope > [data-accordion-title]");
         if (title) {
+          title.textContent = accordionControls.title.value;
           title.style.color = textColor;
           title.style.marginLeft = accordionControls.icon.value === "none" ? "0" : "8px";
         }
@@ -13643,10 +13672,10 @@ ${bodyHtml}
         capturePreviewEdits();
       });
       const comparePresets = {
-        simple: { before: "#f4f6f8", after: "#eef8f8", beforeTitle: "#64748b", afterTitle: "#0f8b8d", border: "#d9dee8", arrow: false, borderStyle: "solid", radius: "8", padding: "12", gap: "12", shadow: "none" },
-        change: { before: "#fff7ed", after: "#eff6ff", beforeTitle: "#c2410c", afterTitle: "#2563eb", border: "#cbd5e1", arrow: true, borderStyle: "solid", radius: "8", padding: "14", gap: "12", shadow: "none" },
-        success: { before: "#fef2f2", after: "#f0fdf4", beforeTitle: "#dc2626", afterTitle: "#16a34a", border: "#d9dee8", arrow: true, borderStyle: "solid", radius: "10", padding: "14", gap: "14", shadow: "soft" },
-        mono: { before: "#f3f4f6", after: "#ffffff", beforeTitle: "#4b5563", afterTitle: "#111827", border: "#9ca3af", arrow: true, borderStyle: "solid", radius: "0", padding: "12", gap: "10", shadow: "none" }
+        simple: { before: "#f4f6f8", after: "#eef8f8", beforeTitle: "#64748b", afterTitle: "#0f8b8d", border: "#d9dee8", arrow: false, arrowThickness: "1", borderStyle: "solid", radius: "8", padding: "12", gap: "12", shadow: "none" },
+        change: { before: "#fff7ed", after: "#eff6ff", beforeTitle: "#c2410c", afterTitle: "#2563eb", border: "#cbd5e1", arrow: true, arrowThickness: "2", borderStyle: "solid", radius: "8", padding: "14", gap: "12", shadow: "none" },
+        success: { before: "#fef2f2", after: "#f0fdf4", beforeTitle: "#dc2626", afterTitle: "#16a34a", border: "#d9dee8", arrow: true, arrowThickness: "2", borderStyle: "solid", radius: "10", padding: "14", gap: "14", shadow: "soft" },
+        mono: { before: "#f3f4f6", after: "#ffffff", beforeTitle: "#4b5563", afterTitle: "#111827", border: "#9ca3af", arrow: true, arrowThickness: "1", borderStyle: "solid", radius: "0", padding: "12", gap: "10", shadow: "none" }
       };
       const setCompareColor = (colorInput, textInput, value) => {
         colorInput.value = value;
@@ -13661,6 +13690,7 @@ ${bodyHtml}
         setCompareColor(compareControls.afterTitleColor, compareControls.afterTitleColorText, preset.afterTitle);
         setCompareColor(compareControls.borderColor, compareControls.borderColorText, preset.border);
         compareControls.arrow.checked = preset.arrow;
+        compareControls.arrowThickness.value = preset.arrowThickness;
         compareControls.borderStyle.value = preset.borderStyle;
         compareControls.borderWidth.value = "1";
         compareControls.radius.value = preset.radius;
@@ -13814,7 +13844,7 @@ ${bodyHtml}
         [accordionControls.accent, accordionControls.accentText],
         [accordionControls.border, accordionControls.borderText]
       ]);
-      [accordionControls.icon, accordionControls.initiallyOpen].forEach((input) => {
+      [accordionControls.title, accordionControls.icon, accordionControls.initiallyOpen].forEach((input) => {
         input.classList.add("component-property-input");
         input.addEventListener("input", applyComponentSpecificSettings);
         input.addEventListener("change", applyComponentSpecificSettings);
@@ -13855,7 +13885,6 @@ ${bodyHtml}
         const component = event.target;
         if (component?.dataset?.insertedComponent !== "accordion") return;
         refreshAccordionIcon(component);
-        if (component === getTargetComponent()) accordionControls.initiallyOpen.checked = component.open;
         capturePreviewEdits();
       }, true);
       elements.preview.addEventListener("click", (event) => {
@@ -13936,7 +13965,7 @@ ${bodyHtml}
         rule: `<hr data-inserted-component="rule" style="border:0;border-top:2px solid #cbd5e1;margin:18px 0;">`,
         xpost: `<div data-inserted-component="xpost" data-xpost-count="1" data-embed-url="" data-embed-url2="" data-embed-url3="" data-xpost-caption="" data-xpost-caption2="" data-xpost-caption3="" data-xpost-side-content="text" data-xpost-side-image-url="" contenteditable="false" style="margin:0 0 6px;"><div data-embed-layout><div data-embed-slot="true">${embedPlaceholderHtml("𝕏", "設定メニューでX投稿のURLを入力してください", false)}</div><div data-embed-text data-side-content-slot="true" contenteditable="true" style="display:none;flex:1 1 0%;min-width:0;overflow-wrap:anywhere;word-break:break-word;white-space:normal;align-self:center;">投稿の横に文章を入力</div><div data-embed-side-image contenteditable="false" style="display:none;flex:1 1 0%;min-width:0;align-self:center;"></div></div></div>`,
         video: `<div data-inserted-component="video" data-embed-url="" data-video-bottom-text="" data-video-bottom-html="" contenteditable="false" style="margin:14px 0;"><div data-embed-slot="true">${embedPlaceholderHtml("▶️", "動画のURL（YouTube・Vimeoなど）を設定してください")}</div></div>`,
-        accordion: `<details data-inserted-component="accordion" data-accordion-preset="simple" data-accordion-icon="chevron" data-accordion-summary-background="#f8fafc" data-accordion-content-background="#ffffff" data-accordion-border="#cbd5e1" data-accordion-accent="#2563eb" data-accordion-text-color="#172033" data-accordion-radius="8" data-accordion-padding="14" contenteditable="false" style="margin:14px 0;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;overflow:hidden;"><summary data-accordion-summary contenteditable="true" style="display:list-item;padding:14px;background:#f8fafc;color:#2563eb;font-weight:700;cursor:pointer;list-style-position:inside;"><span data-accordion-icon contenteditable="false" aria-hidden="true" style="display:none;"></span><span data-accordion-title style="margin-left:8px;color:#172033;">詳しい内容を見る</span></summary><div data-accordion-content contenteditable="true" style="padding:14px;color:#172033;line-height:1.8;background:#ffffff;border-top:1px solid #cbd5e1;">ここに折りたたむ内容を入力します。</div></details>`,
+        accordion: `<details data-inserted-component="accordion" data-accordion-preset="simple" data-accordion-icon="chevron" data-accordion-initially-open="false" data-accordion-summary-background="#f8fafc" data-accordion-content-background="#ffffff" data-accordion-border="#cbd5e1" data-accordion-accent="#2563eb" data-accordion-text-color="#172033" data-accordion-radius="8" data-accordion-padding="14" contenteditable="false" style="margin:14px 0;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;overflow:hidden;"><summary data-accordion-summary contenteditable="true" style="display:list-item;padding:14px;background:#f8fafc;color:#2563eb;font-weight:700;cursor:pointer;list-style-position:inside;"><span data-accordion-icon contenteditable="false" aria-hidden="true" style="display:none;"></span><span data-accordion-title contenteditable="true" style="margin-left:8px;color:#172033;">詳しい内容を見る</span></summary><div data-accordion-content contenteditable="true" style="padding:14px;color:#172033;line-height:1.8;background:#ffffff;border-top:1px solid #cbd5e1;">ここに折りたたむ内容を入力します。</div></details>`,
         linkCard: `<div data-inserted-component="linkCard" data-link-card-preset="standard" data-link-card-url="https://example.com" data-link-card-image-url="" data-link-card-show-image="false" data-link-card-new-tab="true" data-link-card-button-label="リンクを開く" data-link-card-accent="#2563eb" data-link-card-background="#ffffff" data-link-card-border="#cbd5e1" data-link-card-text-color="#172033" data-link-card-radius="10" contenteditable="false" style="margin:14px 0;"><a data-link-card-anchor href="https://example.com" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:stretch;gap:0;color:#172033;text-decoration:none;border:1px solid #cbd5e1;border-radius:10px;background:#ffffff;overflow:hidden;"><span data-link-card-image-wrap contenteditable="false" style="display:none;flex:0 0 34%;max-width:220px;background:#f1f5f9;"><img data-link-card-image alt="" style="display:block;width:100%;height:100%;min-height:140px;object-fit:cover;"></span><span data-link-card-body style="display:flex;flex:1 1 auto;min-width:0;flex-direction:column;justify-content:center;padding:18px;"><strong data-link-card-title contenteditable="true" style="display:block;font-size:18px;line-height:1.5;">リンク先のタイトル</strong><span data-link-card-description contenteditable="true" style="display:block;margin-top:6px;color:#64748b;line-height:1.7;">リンク先の説明を入力します。</span><span data-link-card-action contenteditable="false" style="display:inline-flex;align-self:flex-start;margin-top:12px;color:#2563eb;font-weight:700;">リンクを開く →</span></span></a></div>`,
         toc: `<nav data-inserted-component="toc" aria-label="目次" style="margin:14px 0;padding:14px 16px;border:1px solid #d9dee8;border-radius:8px;background:#fbfcff;">
           <div contenteditable="false" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
