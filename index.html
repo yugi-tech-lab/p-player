@@ -1521,6 +1521,18 @@
       flex: 1;
     }
 
+    .character-count {
+      flex: none;
+      padding: 3px 9px;
+      border: 1px solid #cfd6e3;
+      border-radius: 999px;
+      background: #f8fafc;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
     .preview-history-actions {
       display: flex;
       gap: 6px;
@@ -1540,6 +1552,93 @@
       font-size: 0.8rem;
       min-height: 24px;
       padding: 2px 7px;
+    }
+
+    .shortcut-help-dialog {
+      width: min(620px, calc(100vw - 32px));
+      max-height: min(720px, calc(100vh - 32px));
+      padding: 0;
+      border: 0;
+      border-radius: 12px;
+      background: var(--panel);
+      color: var(--ink);
+      box-shadow: 0 18px 50px rgba(15, 23, 42, .24);
+    }
+
+    .shortcut-help-dialog::backdrop {
+      background: rgba(15, 23, 42, .38);
+    }
+
+    .shortcut-help-dialog form {
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    .shortcut-help-dialog h3 {
+      margin: 0 0 14px;
+    }
+
+    .shortcut-list {
+      display: grid;
+      grid-template-columns: max-content minmax(0, 1fr);
+      gap: 0;
+      margin: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .shortcut-list dt,
+    .shortcut-list dd {
+      margin: 0;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .shortcut-list dt {
+      background: #f8fafc;
+      font-weight: 700;
+    }
+
+    .shortcut-list dt:nth-last-of-type(1),
+    .shortcut-list dd:last-of-type {
+      border-bottom: 0;
+    }
+
+    .shortcut-list kbd {
+      display: inline-block;
+      min-width: 24px;
+      padding: 1px 6px;
+      border: 1px solid #b8c1d1;
+      border-bottom-width: 2px;
+      border-radius: 5px;
+      background: #ffffff;
+      color: #334155;
+      font-family: inherit;
+      font-size: 0.78rem;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .shortcut-dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+
+    @media (max-width: 560px) {
+      .shortcut-list {
+        grid-template-columns: 1fr;
+      }
+
+      .shortcut-list dt {
+        border-bottom: 0;
+        padding-bottom: 4px;
+      }
+
+      .shortcut-list dd {
+        padding-top: 4px;
+      }
     }
 
     .component-delete-button {
@@ -5403,7 +5502,9 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
         <section class="panel preview" aria-label="プレビュー">
           <div class="preview-heading-row">
             <h2>プレビュー</h2>
+            <span class="character-count" id="characterCount" title="空白と改行を除いた、プレビュー内の文字数です">文字数 0</span>
             <div class="preview-history-actions">
+              <button class="secondary" id="keyboardShortcutsButton" type="button" aria-haspopup="dialog" aria-controls="keyboardShortcutsDialog">⌨ ショートカット</button>
               <button class="secondary" id="importMarkdownButton" type="button" title="ファイルまたは貼り付けたMarkdownを記事末尾へ追加">Markdown読込み</button>
               <input id="markdownFileInput" type="file" accept=".md,.markdown,text/markdown,text/plain" hidden>
               <dialog class="markdown-import-dialog" id="markdownImportDialog">
@@ -5448,6 +5549,25 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
               <button class="secondary" id="autosaveHistoryButton" type="button">自動保存から復元</button>
             </div>
           </div>
+          <dialog class="shortcut-help-dialog" id="keyboardShortcutsDialog">
+            <form method="dialog">
+              <h3>キーボードショートカット</h3>
+              <dl class="shortcut-list">
+                <dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Z</kbd></dt><dd>プレビューの操作を元に戻す</dd>
+                <dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></dt><dd>プレビューの操作をやり直す</dd>
+                <dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Y</kbd></dt><dd>プレビューの操作をやり直す</dd>
+                <dt><kbd>Enter</kbd></dt><dd>改行する。リストでは次の項目を追加する</dd>
+                <dt><kbd>Shift</kbd> + <kbd>Enter</kbd></dt><dd>リスト項目内などで改行する</dd>
+                <dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>A</kbd></dt><dd>コード・画像キャプション編集中は、その欄だけを全選択する</dd>
+                <dt><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + クリック</dt><dd>テーブルのセルを複数選択する</dd>
+                <dt><kbd>↑</kbd> / <kbd>↓</kbd></dt><dd>テーブル編集中に同じ列の上下セルへ移動する</dd>
+                <dt><kbd>Esc</kbd></dt><dd>開いているダイアログやメニューを閉じる</dd>
+              </dl>
+              <div class="shortcut-dialog-actions">
+                <button class="primary" type="submit" value="close">閉じる</button>
+              </div>
+            </form>
+          </dialog>
           <p class="panel-caption">文章を選択すると、色・フォント・サイズ・リンクなどを部分的に変更できます。</p>
           <div class="selection-toolbar" aria-label="選択範囲の装飾">
             <div class="selection-controls">
@@ -6948,6 +7068,7 @@ ${bodyHtml}
       elements.preview.style.maxWidth = elements.previewWidth.value;
       setupTableColumnResize();
       updateComponentDeleteButtons();
+      updateCharacterCount();
       enhancePreviewItalics();
     }
 
@@ -7073,6 +7194,21 @@ ${bodyHtml}
       });
     }
 
+    function updateCharacterCount() {
+      const counter = document.querySelector("#characterCount");
+      if (!counter || !elements.preview) return;
+      const clone = elements.preview.cloneNode(true);
+      clone.querySelectorAll([
+        "script", "style", "[data-toc-refresh]", "[data-embed-apply-url]",
+        "[data-embed-url-input]", "[data-embed-click-catcher]", "[data-code-line-numbers]"
+      ].join(",")).forEach((element) => element.remove());
+      const countableText = (clone.textContent || "")
+        .replace(/[\s\u200b-\u200d\ufeff]/gu, "");
+      const count = Array.from(countableText).length;
+      counter.textContent = `文字数 ${count.toLocaleString("ja-JP")}`;
+      counter.setAttribute("aria-label", `プレビューの文字数 ${count}文字`);
+    }
+
     function capturePreviewEdits() {
       const componentProperties = document.querySelector(".inserted-component-properties");
       normalizeEmbeddedSideContent(elements.preview);
@@ -7085,6 +7221,7 @@ ${bodyHtml}
       elements.code.textContent = formatOutputHtml(formattedPreviewHtml);
       recordPreviewState(formattedPreviewHtml);
       updateComponentDeleteButtons();
+      updateCharacterCount();
       scheduleAutosave();
     }
 
@@ -8042,7 +8179,9 @@ ${bodyHtml}
         rule: "水平線",
         xpost: "X投稿",
         video: "動画",
-        toc: "目次"
+        toc: "目次",
+        accordion: "折りたたみ",
+        linkCard: "リンクカード"
       }[type] || "パーツ";
     }
 
@@ -8340,7 +8479,7 @@ ${bodyHtml}
         placeCaretAtStart(paragraph);
         capturePreviewEdits();
         document.querySelector(".inserted-component-properties")?._sync?.();
-        setStatus("横コンテンツ内に文章を追加しました");
+        setStatus("分割コンテンツ内に文章を追加しました");
         return paragraph;
       }
       paragraph.dataset.insertedComponent = "body";
@@ -9167,7 +9306,13 @@ ${bodyHtml}
         bodyButton.id = "selectionToBodyButton";
         bodyButton.type = "button";
         bodyButton.textContent = "本文カードに分離";
-        listButton.after(headingButton, bodyButton);
+        const accordionButton = document.createElement("button");
+        accordionButton.className = "secondary";
+        accordionButton.id = "selectionToAccordionButton";
+        accordionButton.type = "button";
+        accordionButton.textContent = "折りたたみ";
+        accordionButton.title = "選択範囲を折りたたみとして分離";
+        listButton.after(headingButton, bodyButton, accordionButton);
       }
       const splitToBodyButton = document.querySelector("#selectionToBodyButton");
       if (splitToBodyButton && !document.querySelector("#mergeBodyWithPreviousButton")) {
@@ -9197,7 +9342,9 @@ ${bodyHtml}
           <option value="rule">水平線</option>
           <option value="xpost">X投稿</option>
           <option value="video">動画</option>
-          <option value="toc">目次</option>`;
+          <option value="toc">目次</option>
+          <option value="accordion">折りたたみ</option>
+          <option value="linkCard">リンクカード</option>`;
         const insertButton = document.createElement("button");
         insertButton.className = "secondary";
         insertButton.id = "componentInsertButton";
@@ -9210,16 +9357,18 @@ ${bodyHtml}
           ["note", "📝", "メモ"],
           ["quote", "💬", "引用"],
           ["qa", "❓", "Q&A"],
+          ["beforeAfter", "↔️", "Before / After"],
           ["table", "▦", "テーブル"],
           ["image", "🖼️", "画像"],
           ["imageText", "📰", "左右画像＋テキスト"],
           ["imagePair", "🎞️", "画像横並び（2〜3枚）"],
-          ["beforeAfter", "↔️", "Before / After"],
           ["code", "💻", "コード"],
           ["rule", "➖", "水平線"],
           ["xpost", "𝕏", "X投稿"],
           ["video", "▶️", "動画"],
-          ["toc", "📑", "目次"]
+          ["toc", "📑", "目次"],
+          ["accordion", "▾", "折りたたみ"],
+          ["linkCard", "🔗", "リンクカード"]
         ].forEach(([type, icon, label]) => {
           const button = document.createElement("button");
           button.className = "secondary component-quick-button";
@@ -10665,6 +10814,79 @@ ${bodyHtml}
         : "選択範囲を本文カードとして分離しました");
     }
 
+    function applySelectionAccordion() {
+      const selection = window.getSelection();
+      if (savedPreviewRange && elements.preview.contains(savedPreviewRange.commonAncestorContainer)) {
+        selection.removeAllRanges();
+        selection.addRange(savedPreviewRange);
+      }
+      if (!selection.rangeCount || selection.isCollapsed) {
+        setStatus("折りたたみにする文章を選択してください");
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+      const elementForNode = (node) => node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+      const blockSelector = '[data-inserted-component="heading"], [data-inserted-component="body"]';
+      const startBlock = elementForNode(range.startContainer)?.closest?.(blockSelector);
+      const endBlock = elementForNode(range.endContainer)?.closest?.(blockSelector);
+      if (!startBlock || startBlock !== endBlock || !elements.preview.contains(startBlock)) {
+        setStatus("1つの見出しまたは本文の中だけを選択してください");
+        return;
+      }
+
+      const sourceType = startBlock.dataset.insertedComponent;
+      const sourceContent = sourceType === "heading"
+        ? startBlock.querySelector("[data-heading-content]")
+        : startBlock;
+      if (!sourceContent
+        || !sourceContent.contains(range.startContainer)
+        || !sourceContent.contains(range.endContainer)) {
+        setStatus("見出しまたは本文の文字部分を選択してください");
+        return;
+      }
+
+      const beforeRange = document.createRange();
+      beforeRange.selectNodeContents(sourceContent);
+      beforeRange.setEnd(range.startContainer, range.startOffset);
+      const afterRange = document.createRange();
+      afterRange.selectNodeContents(sourceContent);
+      afterRange.setStart(range.endContainer, range.endOffset);
+      const beforeFragment = beforeRange.cloneContents();
+      const selectedFragment = range.cloneContents();
+      const afterFragment = afterRange.cloneContents();
+      if (!documentFragmentHasContent(selectedFragment)) {
+        setStatus("文字を含む範囲を選択してください");
+        return;
+      }
+
+      const sourceSettings = parseDocumentBlockSettings(startBlock);
+      const replacementBlocks = [];
+      if (documentFragmentHasContent(beforeFragment)) {
+        replacementBlocks.push(createDocumentBlockFromFragment(sourceType, beforeFragment, sourceSettings));
+      }
+      const holder = document.createElement("div");
+      holder.innerHTML = insertedComponentHtml("accordion");
+      const accordion = holder.firstElementChild;
+      const accordionContent = accordion?.querySelector(":scope > [data-accordion-content]");
+      if (!accordion || !accordionContent) return;
+      accordionContent.replaceChildren(selectedFragment);
+      replacementBlocks.push(accordion);
+      if (documentFragmentHasContent(afterFragment)) {
+        replacementBlocks.push(createDocumentBlockFromFragment(sourceType, afterFragment, sourceSettings));
+      }
+      startBlock.replaceWith(...replacementBlocks);
+
+      activeInsertedComponent = accordion;
+      savedPreviewRange = null;
+      capturePreviewEdits();
+      document.querySelector(".inserted-component-properties")?._sync?.();
+      updateComponentDeleteButtons();
+      showControlPage("component");
+      placeCaretAtStart(accordionContent);
+      setStatus("選択範囲を折りたたみにしました");
+    }
+
     function setupInsertedComponentProperties(componentPage) {
       const section = document.createElement("section");
       section.className = "inserted-component-properties property-section";
@@ -11221,6 +11443,77 @@ ${bodyHtml}
         url: videoPropertyBlock.querySelector("#videoUrl"),
         bottomText: videoPropertyBlock.querySelector("#videoBottomText")
       };
+      const accordionPropertyBlock = document.createElement("div");
+      accordionPropertyBlock.className = "field list-component-settings accordion-component-settings";
+      accordionPropertyBlock.innerHTML = `<label>折りたたみ設定</label>
+        <div class="list-settings-group"><strong>開閉・デザイン</strong>
+          <div class="row">
+            <div class="field"><label for="accordionPreset">スタイル</label><select id="accordionPreset"><option value="simple">シンプル</option><option value="accent">アクセント</option><option value="soft">やわらか</option><option value="dark">ダーク</option><option value="custom">カスタム</option></select></div>
+            <div class="field"><label for="accordionIcon">開閉記号</label><select id="accordionIcon"><option value="chevron">矢印</option><option value="none">なし</option></select></div>
+            <div class="field"><label class="check-item"><input id="accordionInitiallyOpen" type="checkbox">最初から開く</label></div>
+          </div>
+        </div>
+        <div class="list-settings-group"><strong>配色</strong>
+          <div class="row">
+            <div class="field"><label for="accordionSummaryBackground">見出し背景</label><div class="color-row"><input id="accordionSummaryBackground" type="color" value="#f8fafc"><input id="accordionSummaryBackgroundText" type="text" value="#f8fafc"></div></div>
+            <div class="field"><label for="accordionContentBackground">本文背景</label><div class="color-row"><input id="accordionContentBackground" type="color" value="#ffffff"><input id="accordionContentBackgroundText" type="text" value="#ffffff"></div></div>
+            <div class="field"><label for="accordionTextColor">文字色</label><div class="color-row"><input id="accordionTextColor" type="color" value="#172033"><input id="accordionTextColorText" type="text" value="#172033"></div></div>
+            <div class="field"><label for="accordionAccentColor">記号色</label><div class="color-row"><input id="accordionAccentColor" type="color" value="#2563eb"><input id="accordionAccentColorText" type="text" value="#2563eb"></div></div>
+            <div class="field"><label for="accordionBorderColor">枠線色</label><div class="color-row"><input id="accordionBorderColor" type="color" value="#cbd5e1"><input id="accordionBorderColorText" type="text" value="#cbd5e1"></div></div>
+          </div>
+        </div>
+        <div class="list-settings-group"><strong>サイズ</strong>
+          <div class="row">
+            <div class="field"><label for="accordionRadius">角丸</label><div class="unit-input"><input id="accordionRadius" type="number" min="0" max="40" value="8"><span>px</span></div></div>
+            <div class="field"><label for="accordionPadding">内側余白</label><div class="unit-input"><input id="accordionPadding" type="number" min="4" max="40" value="14"><span>px</span></div></div>
+          </div>
+        </div>`;
+      videoPropertyBlock.after(accordionPropertyBlock);
+      const accordionControls = {
+        preset: accordionPropertyBlock.querySelector("#accordionPreset"), icon: accordionPropertyBlock.querySelector("#accordionIcon"), initiallyOpen: accordionPropertyBlock.querySelector("#accordionInitiallyOpen"),
+        summaryBackground: accordionPropertyBlock.querySelector("#accordionSummaryBackground"), summaryBackgroundText: accordionPropertyBlock.querySelector("#accordionSummaryBackgroundText"),
+        contentBackground: accordionPropertyBlock.querySelector("#accordionContentBackground"), contentBackgroundText: accordionPropertyBlock.querySelector("#accordionContentBackgroundText"),
+        textColor: accordionPropertyBlock.querySelector("#accordionTextColor"), textColorText: accordionPropertyBlock.querySelector("#accordionTextColorText"),
+        accent: accordionPropertyBlock.querySelector("#accordionAccentColor"), accentText: accordionPropertyBlock.querySelector("#accordionAccentColorText"),
+        border: accordionPropertyBlock.querySelector("#accordionBorderColor"), borderText: accordionPropertyBlock.querySelector("#accordionBorderColorText"),
+        radius: accordionPropertyBlock.querySelector("#accordionRadius"), padding: accordionPropertyBlock.querySelector("#accordionPadding")
+      };
+      const linkCardPropertyBlock = document.createElement("div");
+      linkCardPropertyBlock.className = "field list-component-settings link-card-component-settings";
+      linkCardPropertyBlock.innerHTML = `<label>リンクカード</label>
+        <div class="list-settings-group"><strong>リンク</strong>
+          <div class="row">
+            <div class="field" style="flex:1 1 100%;"><label for="linkCardUrl">リンクURL</label><input id="linkCardUrl" type="url" placeholder="https://example.com"></div>
+            <div class="field"><label class="check-item"><input id="linkCardNewTab" type="checkbox" checked>別タブで開く</label></div>
+            <div class="field"><label for="linkCardButtonLabel">リンク文言</label><input id="linkCardButtonLabel" type="text" value="リンクを開く"></div>
+          </div>
+        </div>
+        <div class="list-settings-group"><strong>画像・レイアウト</strong>
+          <div class="row">
+            <div class="field"><label for="linkCardPreset">スタイル</label><select id="linkCardPreset"><option value="standard">標準カード</option><option value="accent">アクセント</option><option value="compact">コンパクト</option><option value="dark">ダーク</option><option value="custom">カスタム</option></select></div>
+            <div class="field"><label class="check-item"><input id="linkCardShowImage" type="checkbox">画像を表示</label></div>
+            <div class="field" style="flex:1 1 100%;"><label for="linkCardImageUrl">画像URL</label><input id="linkCardImageUrl" type="text" placeholder="https://... または Markdown"></div>
+          </div>
+        </div>
+        <div class="list-settings-group"><strong>配色・形状</strong>
+          <div class="row">
+            <div class="field"><label for="linkCardAccentColor">アクセント色</label><div class="color-row"><input id="linkCardAccentColor" type="color" value="#2563eb"><input id="linkCardAccentColorText" type="text" value="#2563eb"></div></div>
+            <div class="field"><label for="linkCardBackgroundColor">背景色</label><div class="color-row"><input id="linkCardBackgroundColor" type="color" value="#ffffff"><input id="linkCardBackgroundColorText" type="text" value="#ffffff"></div></div>
+            <div class="field"><label for="linkCardBorderColor">枠線色</label><div class="color-row"><input id="linkCardBorderColor" type="color" value="#cbd5e1"><input id="linkCardBorderColorText" type="text" value="#cbd5e1"></div></div>
+            <div class="field"><label for="linkCardTextColor">文字色</label><div class="color-row"><input id="linkCardTextColor" type="color" value="#172033"><input id="linkCardTextColorText" type="text" value="#172033"></div></div>
+            <div class="field"><label for="linkCardRadius">角丸</label><div class="unit-input"><input id="linkCardRadius" type="number" min="0" max="40" value="10"><span>px</span></div></div>
+          </div>
+        </div>`;
+      accordionPropertyBlock.after(linkCardPropertyBlock);
+      const linkCardControls = {
+        url: linkCardPropertyBlock.querySelector("#linkCardUrl"), newTab: linkCardPropertyBlock.querySelector("#linkCardNewTab"), buttonLabel: linkCardPropertyBlock.querySelector("#linkCardButtonLabel"),
+        preset: linkCardPropertyBlock.querySelector("#linkCardPreset"), showImage: linkCardPropertyBlock.querySelector("#linkCardShowImage"), imageUrl: linkCardPropertyBlock.querySelector("#linkCardImageUrl"),
+        accent: linkCardPropertyBlock.querySelector("#linkCardAccentColor"), accentText: linkCardPropertyBlock.querySelector("#linkCardAccentColorText"),
+        background: linkCardPropertyBlock.querySelector("#linkCardBackgroundColor"), backgroundText: linkCardPropertyBlock.querySelector("#linkCardBackgroundColorText"),
+        border: linkCardPropertyBlock.querySelector("#linkCardBorderColor"), borderText: linkCardPropertyBlock.querySelector("#linkCardBorderColorText"),
+        textColor: linkCardPropertyBlock.querySelector("#linkCardTextColor"), textColorText: linkCardPropertyBlock.querySelector("#linkCardTextColorText"),
+        radius: linkCardPropertyBlock.querySelector("#linkCardRadius")
+      };
       componentPage.appendChild(section);
       componentPage.appendChild(dialog);
 
@@ -11256,7 +11549,8 @@ ${bodyHtml}
         "imageLinkUrl", "componentImageLinkUrl2", "componentImageLinkUrl3",
         "codeSourceInput", "codeFileInput", "tableRows", "tableColumns", "tableCsvSkipRows", "tableCsvSkipColumns",
         "tableCsvHeaderRow", "tableCsvFileInput", "xpostUrl", "xpostUrl2", "xpostUrl3",
-        "xpostCaption", "xpostCaption2", "xpostCaption3", "xpostSideImageUrl", "videoUrl"
+        "xpostCaption", "xpostCaption2", "xpostCaption3", "xpostSideImageUrl", "videoUrl",
+        "linkCardUrl", "linkCardImageUrl", "linkCardButtonLabel"
       ]);
       const isVisibleComponentPropertyControl = (control) => {
         if (!control?.id || excludedComponentPropertyIds.has(control.id)) return false;
@@ -11318,7 +11612,9 @@ ${bodyHtml}
         quote: "引用",
         code: "コード",
         xpost: "X投稿",
-        video: "動画"
+        video: "動画",
+        accordion: "折りたたみ",
+        linkCard: "リンクカード"
       };
       let lastPresetTarget = null;
       const getCustomPresets = (componentType) => {
@@ -11422,7 +11718,8 @@ ${bodyHtml}
             imagePairLink3Field, imagePrimaryGroup, imageSecondaryGroup, imageThirdGroup,
             qaPropertyBlock, listPropertyBlock, comparePropertyBlock,
             notePropertyBlock, quotePropertyBlock, codePropertyBlock,
-            xpostPropertyBlock, videoPropertyBlock].forEach((block) => {
+            xpostPropertyBlock, videoPropertyBlock, accordionPropertyBlock,
+            linkCardPropertyBlock].forEach((block) => {
             block.hidden = true;
             block.classList.add("is-hidden");
             block.style.setProperty("display", "none", "important");
@@ -11448,7 +11745,7 @@ ${bodyHtml}
           imagePairCountField.after(imageCaptionToggleField);
         }
         name.textContent = component.dataset.embeddedComponent
-          ? `横コンテンツ内の${componentTypeNames[componentType] || "パーツ"}を編集中`
+          ? `分割コンテンツ内の${componentTypeNames[componentType] || "パーツ"}を編集中`
           : `${componentTypeNames[componentType] || "パーツ"}を編集中`;
         updateComponentDeleteButtons();
         refreshCustomPresetOptions();
@@ -11458,7 +11755,7 @@ ${bodyHtml}
         propertyConvertImageButton.textContent = componentType === "image"
           ? "左右画像＋テキストへ変換"
           : "通常画像へ変換";
-        const hasDedicatedSettings = ["table", "list", "image", "imageText", "imagePair", "qa", "beforeAfter", "note", "quote", "code", "xpost", "video"].includes(componentType);
+        const hasDedicatedSettings = ["table", "list", "image", "imageText", "imagePair", "qa", "beforeAfter", "note", "quote", "code", "xpost", "video", "accordion", "linkCard"].includes(componentType);
         const isImageText = componentType === "imageText";
         const supportsImageCaption = ["image", "imageText", "imagePair"].includes(componentType);
         const bubbleEnabled = isImageText && component.dataset.speechBubble === "true";
@@ -11524,6 +11821,8 @@ ${bodyHtml}
         showBlock(codePropertyBlock, componentType === "code");
         showBlock(xpostPropertyBlock, componentType === "xpost");
         showBlock(videoPropertyBlock, componentType === "video");
+        showBlock(accordionPropertyBlock, componentType === "accordion");
+        showBlock(linkCardPropertyBlock, componentType === "linkCard");
         showBlock(legacyPropertyBlocks[3], isImageText && bubbleEnabled);
         showBlock(legacyPropertyBlocks[4], usesImageUrl);
         showBlock(legacyPropertyBlocks[5], usesImageUrl);
@@ -11685,6 +11984,34 @@ ${bodyHtml}
         if (componentType === "video") {
           videoControls.url.value = component.dataset.embedUrl || "";
           videoControls.bottomText.value = component.dataset.videoBottomText || "";
+        }
+        if (componentType === "accordion") {
+          const summary = component.querySelector(":scope > [data-accordion-summary]");
+          const content = component.querySelector(":scope > [data-accordion-content]");
+          accordionControls.preset.value = component.dataset.accordionPreset || "custom";
+          accordionControls.icon.value = component.dataset.accordionIcon || "chevron";
+          accordionControls.initiallyOpen.checked = component.open;
+          setColorControl(accordionControls.summaryBackground, accordionControls.summaryBackgroundText, component.dataset.accordionSummaryBackground || summary?.style.backgroundColor || "#f8fafc");
+          setColorControl(accordionControls.contentBackground, accordionControls.contentBackgroundText, component.dataset.accordionContentBackground || content?.style.backgroundColor || "#ffffff");
+          setColorControl(accordionControls.textColor, accordionControls.textColorText, component.dataset.accordionTextColor || summary?.style.color || "#172033");
+          setColorControl(accordionControls.accent, accordionControls.accentText, component.dataset.accordionAccent || "#2563eb");
+          setColorControl(accordionControls.border, accordionControls.borderText, component.dataset.accordionBorder || component.style.borderColor || "#cbd5e1");
+          accordionControls.radius.value = component.dataset.accordionRadius || String(parseInt(component.style.borderRadius, 10) || 8);
+          accordionControls.padding.value = component.dataset.accordionPadding || String(parseInt(summary?.style.padding, 10) || 14);
+        }
+        if (componentType === "linkCard") {
+          const anchor = component.querySelector(":scope > [data-link-card-anchor]");
+          linkCardControls.url.value = component.dataset.linkCardUrl || anchor?.getAttribute("href") || "";
+          linkCardControls.newTab.checked = component.dataset.linkCardNewTab !== "false";
+          linkCardControls.buttonLabel.value = component.dataset.linkCardButtonLabel || "リンクを開く";
+          linkCardControls.preset.value = component.dataset.linkCardPreset || "custom";
+          linkCardControls.showImage.checked = component.dataset.linkCardShowImage === "true";
+          linkCardControls.imageUrl.value = component.dataset.linkCardImageUrl || "";
+          setColorControl(linkCardControls.accent, linkCardControls.accentText, component.dataset.linkCardAccent || "#2563eb");
+          setColorControl(linkCardControls.background, linkCardControls.backgroundText, component.dataset.linkCardBackground || anchor?.style.backgroundColor || "#ffffff");
+          setColorControl(linkCardControls.border, linkCardControls.borderText, component.dataset.linkCardBorder || anchor?.style.borderColor || "#cbd5e1");
+          setColorControl(linkCardControls.textColor, linkCardControls.textColorText, component.dataset.linkCardTextColor || anchor?.style.color || "#172033");
+          linkCardControls.radius.value = component.dataset.linkCardRadius || String(parseInt(anchor?.style.borderRadius, 10) || 10);
         }
         if (componentType === "qa") {
           const qaStyle = getComputedStyle(component);
@@ -12499,6 +12826,112 @@ ${bodyHtml}
         codeControls.initiallyOpen.disabled = !codeControls.collapsible.checked;
         refreshPublishedCode(component, true);
       };
+      const refreshAccordionIcon = (component) => {
+        const summary = component?.querySelector(":scope > [data-accordion-summary]");
+        const icon = component?.querySelector(":scope > [data-accordion-summary] > [data-accordion-icon]");
+        if (!summary) return;
+        const iconType = component.dataset.accordionIcon === "none" ? "none" : "chevron";
+        summary.style.display = "list-item";
+        summary.style.listStyleType = iconType === "none" ? "none" : "";
+        summary.style.listStylePosition = "inside";
+        if (icon) {
+          icon.textContent = "";
+          icon.style.display = "none";
+        }
+      };
+      const applyAccordionSettings = (component) => {
+        if (!component || component.dataset.insertedComponent !== "accordion") return;
+        const summary = component.querySelector(":scope > [data-accordion-summary]");
+        const content = component.querySelector(":scope > [data-accordion-content]");
+        if (!summary || !content) return;
+        const summaryBackground = colorValue(accordionControls.summaryBackgroundText.value, accordionControls.summaryBackground.value);
+        const contentBackground = colorValue(accordionControls.contentBackgroundText.value, accordionControls.contentBackground.value);
+        const textColor = colorValue(accordionControls.textColorText.value, accordionControls.textColor.value);
+        const accent = colorValue(accordionControls.accentText.value, accordionControls.accent.value);
+        const border = colorValue(accordionControls.borderText.value, accordionControls.border.value);
+        const radius = Math.max(0, Math.min(40, Number(accordionControls.radius.value) || 0));
+        const padding = Math.max(4, Math.min(40, Number(accordionControls.padding.value) || 14));
+        component.dataset.accordionPreset = accordionControls.preset.value;
+        component.dataset.accordionIcon = accordionControls.icon.value;
+        component.dataset.accordionSummaryBackground = summaryBackground;
+        component.dataset.accordionContentBackground = contentBackground;
+        component.dataset.accordionTextColor = textColor;
+        component.dataset.accordionAccent = accent;
+        component.dataset.accordionBorder = border;
+        component.dataset.accordionRadius = String(radius);
+        component.dataset.accordionPadding = String(padding);
+        component.open = accordionControls.initiallyOpen.checked;
+        component.style.border = `1px solid ${border}`;
+        component.style.borderRadius = `${radius}px`;
+        component.style.backgroundColor = contentBackground;
+        component.style.overflow = "hidden";
+        summary.style.padding = `${padding}px`;
+        summary.style.backgroundColor = summaryBackground;
+        summary.style.color = accent;
+        const title = summary.querySelector(":scope > [data-accordion-title]");
+        if (title) {
+          title.style.color = textColor;
+          title.style.marginLeft = accordionControls.icon.value === "none" ? "0" : "8px";
+        }
+        content.style.padding = `${padding}px`;
+        content.style.backgroundColor = contentBackground;
+        content.style.color = textColor;
+        content.style.borderTop = `1px solid ${border}`;
+        const icon = summary.querySelector(":scope > [data-accordion-icon]");
+        if (icon) icon.style.color = accent;
+        refreshAccordionIcon(component);
+      };
+      const applyLinkCardSettings = (component) => {
+        if (!component || component.dataset.insertedComponent !== "linkCard") return;
+        const anchor = component.querySelector(":scope > [data-link-card-anchor]");
+        const imageWrap = anchor?.querySelector("[data-link-card-image-wrap]");
+        const image = imageWrap?.querySelector("[data-link-card-image]");
+        const body = anchor?.querySelector("[data-link-card-body]");
+        const description = anchor?.querySelector("[data-link-card-description]");
+        const action = anchor?.querySelector("[data-link-card-action]");
+        if (!anchor || !imageWrap || !image || !body || !description || !action) return;
+        const url = normalizeLinkUrl(linkCardControls.url.value.trim());
+        const imageUrl = normalizeLinkUrl(getImageSource(linkCardControls.imageUrl.value.trim()));
+        const showImage = linkCardControls.showImage.checked && Boolean(imageUrl);
+        const accent = colorValue(linkCardControls.accentText.value, linkCardControls.accent.value);
+        const background = colorValue(linkCardControls.backgroundText.value, linkCardControls.background.value);
+        const border = colorValue(linkCardControls.borderText.value, linkCardControls.border.value);
+        const textColor = colorValue(linkCardControls.textColorText.value, linkCardControls.textColor.value);
+        const radius = Math.max(0, Math.min(40, Number(linkCardControls.radius.value) || 0));
+        const buttonLabel = linkCardControls.buttonLabel.value.trim() || "リンクを開く";
+        const preset = linkCardControls.preset.value;
+        component.dataset.linkCardPreset = preset;
+        component.dataset.linkCardUrl = url;
+        component.dataset.linkCardImageUrl = imageUrl;
+        component.dataset.linkCardShowImage = String(linkCardControls.showImage.checked);
+        component.dataset.linkCardNewTab = String(linkCardControls.newTab.checked);
+        component.dataset.linkCardButtonLabel = buttonLabel;
+        component.dataset.linkCardAccent = accent;
+        component.dataset.linkCardBackground = background;
+        component.dataset.linkCardBorder = border;
+        component.dataset.linkCardTextColor = textColor;
+        component.dataset.linkCardRadius = String(radius);
+        anchor.href = url || "#";
+        if (linkCardControls.newTab.checked) {
+          anchor.target = "_blank";
+          anchor.rel = "noopener noreferrer";
+        } else {
+          anchor.removeAttribute("target");
+          anchor.removeAttribute("rel");
+        }
+        anchor.style.backgroundColor = background;
+        anchor.style.border = `${preset === "accent" ? 2 : 1}px solid ${preset === "accent" ? accent : border}`;
+        anchor.style.borderRadius = `${radius}px`;
+        anchor.style.color = textColor;
+        anchor.style.boxShadow = preset === "accent" ? "0 5px 16px rgba(15,23,42,.10)" : "none";
+        imageWrap.style.display = showImage ? "block" : "none";
+        if (showImage) image.src = imageUrl;
+        else image.removeAttribute("src");
+        body.style.padding = preset === "compact" ? "12px 14px" : "18px";
+        description.style.color = preset === "dark" ? "#cbd5e1" : "#64748b";
+        action.style.color = accent;
+        action.textContent = `${buttonLabel} →`;
+      };
       const apply = () => {
         const component = getTargetComponent();
         if (!component?.isConnected) return;
@@ -12730,6 +13163,12 @@ ${bodyHtml}
         }
         if (type === "code") {
           applyCodeSettings(component);
+        }
+        if (type === "accordion") {
+          applyAccordionSettings(component);
+        }
+        if (type === "linkCard") {
+          applyLinkCardSettings(component);
         }
         if (type === "xpost") {
           const count = Math.max(1, Math.min(3, Number(xpostControls.count.value) || 1));
@@ -13319,6 +13758,85 @@ ${bodyHtml}
       };
       bindComponentSettings(noteControls, noteControls.preset, [[noteControls.accent, noteControls.accentText], [noteControls.background, noteControls.backgroundText], [noteControls.border, noteControls.borderText]]);
       bindComponentSettings(quoteControls, quoteControls.preset, [[quoteControls.accent, quoteControls.accentText], [quoteControls.background, quoteControls.backgroundText], [quoteControls.border, quoteControls.borderText]]);
+      const accordionPresets = {
+        simple: { summary: "#f8fafc", content: "#ffffff", text: "#172033", accent: "#2563eb", border: "#cbd5e1", radius: "8", padding: "14" },
+        accent: { summary: "#eff6ff", content: "#ffffff", text: "#1e3a8a", accent: "#2563eb", border: "#93c5fd", radius: "10", padding: "16" },
+        soft: { summary: "#f0fdfa", content: "#f8fffd", text: "#134e4a", accent: "#0f766e", border: "#99f6e4", radius: "14", padding: "16" },
+        dark: { summary: "#263247", content: "#172033", text: "#f8fafc", accent: "#22d3ee", border: "#475569", radius: "8", padding: "16" }
+      };
+      const linkCardPresets = {
+        standard: { accent: "#2563eb", background: "#ffffff", border: "#cbd5e1", text: "#172033", radius: "10" },
+        accent: { accent: "#0f766e", background: "#ffffff", border: "#0f766e", text: "#172033", radius: "12" },
+        compact: { accent: "#4f46e5", background: "#f8fafc", border: "#e2e8f0", text: "#172033", radius: "8" },
+        dark: { accent: "#22d3ee", background: "#172033", border: "#475569", text: "#f8fafc", radius: "10" }
+      };
+      const setAccordionPreset = (preset) => {
+        setComponentColorPair(accordionControls.summaryBackground, accordionControls.summaryBackgroundText, preset.summary);
+        setComponentColorPair(accordionControls.contentBackground, accordionControls.contentBackgroundText, preset.content);
+        setComponentColorPair(accordionControls.textColor, accordionControls.textColorText, preset.text);
+        setComponentColorPair(accordionControls.accent, accordionControls.accentText, preset.accent);
+        setComponentColorPair(accordionControls.border, accordionControls.borderText, preset.border);
+        accordionControls.radius.value = preset.radius;
+        accordionControls.padding.value = preset.padding;
+      };
+      accordionControls.preset.addEventListener("change", () => {
+        const preset = accordionPresets[accordionControls.preset.value];
+        if (!preset) return;
+        setAccordionPreset(preset);
+        applyComponentSpecificSettings();
+      });
+      const setLinkCardPreset = (preset) => {
+        setComponentColorPair(linkCardControls.accent, linkCardControls.accentText, preset.accent);
+        setComponentColorPair(linkCardControls.background, linkCardControls.backgroundText, preset.background);
+        setComponentColorPair(linkCardControls.border, linkCardControls.borderText, preset.border);
+        setComponentColorPair(linkCardControls.textColor, linkCardControls.textColorText, preset.text);
+        linkCardControls.radius.value = preset.radius;
+      };
+      linkCardControls.preset.addEventListener("change", () => {
+        const preset = linkCardPresets[linkCardControls.preset.value];
+        if (!preset) return;
+        setLinkCardPreset(preset);
+        applyComponentSpecificSettings();
+      });
+      const accordionStyleControls = {
+        summaryBackground: accordionControls.summaryBackground, summaryBackgroundText: accordionControls.summaryBackgroundText,
+        contentBackground: accordionControls.contentBackground, contentBackgroundText: accordionControls.contentBackgroundText,
+        textColor: accordionControls.textColor, textColorText: accordionControls.textColorText,
+        accent: accordionControls.accent, accentText: accordionControls.accentText,
+        border: accordionControls.border, borderText: accordionControls.borderText,
+        radius: accordionControls.radius, padding: accordionControls.padding
+      };
+      bindComponentSettings(accordionStyleControls, accordionControls.preset, [
+        [accordionControls.summaryBackground, accordionControls.summaryBackgroundText],
+        [accordionControls.contentBackground, accordionControls.contentBackgroundText],
+        [accordionControls.textColor, accordionControls.textColorText],
+        [accordionControls.accent, accordionControls.accentText],
+        [accordionControls.border, accordionControls.borderText]
+      ]);
+      [accordionControls.icon, accordionControls.initiallyOpen].forEach((input) => {
+        input.classList.add("component-property-input");
+        input.addEventListener("input", applyComponentSpecificSettings);
+        input.addEventListener("change", applyComponentSpecificSettings);
+      });
+      const linkCardStyleControls = {
+        accent: linkCardControls.accent, accentText: linkCardControls.accentText,
+        background: linkCardControls.background, backgroundText: linkCardControls.backgroundText,
+        border: linkCardControls.border, borderText: linkCardControls.borderText,
+        textColor: linkCardControls.textColor, textColorText: linkCardControls.textColorText,
+        radius: linkCardControls.radius
+      };
+      bindComponentSettings(linkCardStyleControls, linkCardControls.preset, [
+        [linkCardControls.accent, linkCardControls.accentText],
+        [linkCardControls.background, linkCardControls.backgroundText],
+        [linkCardControls.border, linkCardControls.borderText],
+        [linkCardControls.textColor, linkCardControls.textColorText]
+      ]);
+      [linkCardControls.url, linkCardControls.newTab, linkCardControls.buttonLabel,
+        linkCardControls.showImage, linkCardControls.imageUrl].forEach((input) => {
+        input.classList.add("component-property-input");
+        input.addEventListener("input", applyComponentSpecificSettings);
+        input.addEventListener("change", applyComponentSpecificSettings);
+      });
       [xpostControls, videoControls].forEach((controlSet) => {
         Object.values(controlSet).forEach((input) => {
           input.classList.add("component-property-input");
@@ -13331,6 +13849,18 @@ ${bodyHtml}
           applyComponentSpecificSettings();
           sync();
         });
+      });
+      elements.preview.addEventListener("toggle", (event) => {
+        const component = event.target;
+        if (component?.dataset?.insertedComponent !== "accordion") return;
+        refreshAccordionIcon(component);
+        if (component === getTargetComponent()) accordionControls.initiallyOpen.checked = component.open;
+        capturePreviewEdits();
+      }, true);
+      elements.preview.addEventListener("click", (event) => {
+        if (event.target.closest('[data-inserted-component="linkCard"] [data-link-card-anchor]')) {
+          event.preventDefault();
+        }
       });
       section._apply = apply;
       section._applySpecific = applyComponentSpecificSettings;
@@ -13400,11 +13930,13 @@ ${bodyHtml}
         image: `<figure data-inserted-component="image" data-image-caption="false" data-image-auto-height="false" contenteditable="false" style="margin:14px 0;text-align:center;"><img data-inserted-image="true" src="${escapeHtml(sampleImageSrc)}" alt="" style="display:block;width:100%;height:240px;object-fit:contain;"></figure>`,
         imageText: `<div data-inserted-component="imageText" data-speech-bubble="false" data-image-auto-height="false" contenteditable="false" style="display:flex;width:100%;max-width:100%;box-sizing:border-box;gap:16px;align-items:center;margin:14px 0;"><div contenteditable="false" style="flex:0 0 40%;min-width:0;"><img data-inserted-image="true" src="${escapeHtml(sampleImageSrc)}" alt="" style="display:block;width:100%;height:240px;object-fit:contain;"></div><div data-side-content-slot="true" contenteditable="true" style="flex:1 1 0%;min-width:0;max-width:100%;align-self:center;overflow-wrap:anywhere;word-break:break-word;white-space:normal;">画像の横に文章を入力</div></div>`,
         imagePair: `<div data-inserted-component="imagePair" data-image-pair-count="2" data-image-auto-height="false" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0;"><div contenteditable="false" style="min-width:0;"><img data-inserted-image="true" src="${escapeHtml(sampleImageSrc)}" alt="" style="display:block;width:100%;height:240px;object-fit:contain;"></div><div contenteditable="false" style="min-width:0;"><img data-inserted-image="true" src="${escapeHtml(sampleImageSrc)}" alt="" style="display:block;width:100%;height:240px;object-fit:contain;"></div></div>`,
-        beforeAfter: `<div data-inserted-component="beforeAfter" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0;"><div contenteditable="true" style="padding:12px;background:#f4f6f8;border-radius:8px;"><strong>Before</strong><br>変更前を入力</div><div contenteditable="true" style="padding:12px;background:#eef8f8;border-radius:8px;"><strong>After</strong><br>変更後を入力</div></div>`,
+        beforeAfter: `<div data-inserted-component="beforeAfter" contenteditable="false" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0;"><div data-side-content-slot="true" contenteditable="true" style="padding:12px;background:#f4f6f8;border-radius:8px;"><strong>Before</strong><br>変更前を入力</div><div data-side-content-slot="true" contenteditable="true" style="padding:12px;background:#eef8f8;border-radius:8px;"><strong>After</strong><br>変更後を入力</div></div>`,
         code: `<div data-inserted-component="code" data-code-show-file-name="true" data-code-file-name="sample.txt" data-code-show-line-numbers="true" data-code-line-start="1" data-code-wrap-mode="scroll" data-code-collapsible="false" data-code-initially-open="true" style="margin:14px 0;border-radius:8px;overflow:hidden;background:#172033;color:#f8fafc;font-family:Consolas,'Courier New',monospace;"><div data-code-toolbar contenteditable="false" style="display:flex;align-items:center;justify-content:flex-start;gap:12px;padding:8px 12px;background:#263247;border-bottom:1px solid #475569;font-family:Meiryo,sans-serif;font-size:12px;"><span data-code-filename>sample.txt</span></div><details data-code-details open><summary data-code-summary contenteditable="false" style="display:none;padding:9px 12px;background:#263247;cursor:pointer;font-family:Meiryo,sans-serif;font-size:13px;">コードを表示</summary><div data-code-view style="display:grid;grid-template-columns:max-content minmax(0,1fr);overflow-x:auto;"><pre data-code-line-numbers contenteditable="false" aria-hidden="true" style="margin:0;padding:14px 10px 14px 12px;background:#111827;color:#64748b;text-align:right;line-height:1.6;user-select:none;">1</pre><pre data-code-content contenteditable="true" style="margin:0;padding:14px;min-width:max-content;background:#172033;color:#f8fafc;line-height:1.6;white-space:pre;outline:none;">コードを入力</pre></div></details></div>`,
         rule: `<hr data-inserted-component="rule" style="border:0;border-top:2px solid #cbd5e1;margin:18px 0;">`,
         xpost: `<div data-inserted-component="xpost" data-xpost-count="1" data-embed-url="" data-embed-url2="" data-embed-url3="" data-xpost-caption="" data-xpost-caption2="" data-xpost-caption3="" data-xpost-side-content="text" data-xpost-side-image-url="" contenteditable="false" style="margin:6px 0;"><div data-embed-layout><div data-embed-slot="true">${embedPlaceholderHtml("𝕏", "設定メニューでX投稿のURLを入力してください", false)}</div><div data-embed-text data-side-content-slot="true" contenteditable="true" style="display:none;flex:1 1 0%;min-width:0;overflow-wrap:anywhere;word-break:break-word;white-space:normal;align-self:center;">投稿の横に文章を入力</div><div data-embed-side-image contenteditable="false" style="display:none;flex:1 1 0%;min-width:0;align-self:center;"></div></div></div>`,
         video: `<div data-inserted-component="video" data-embed-url="" data-video-bottom-text="" data-video-bottom-html="" contenteditable="false" style="margin:14px 0;"><div data-embed-slot="true">${embedPlaceholderHtml("▶️", "動画のURL（YouTube・Vimeoなど）を設定してください")}</div></div>`,
+        accordion: `<details data-inserted-component="accordion" data-accordion-preset="simple" data-accordion-icon="chevron" data-accordion-summary-background="#f8fafc" data-accordion-content-background="#ffffff" data-accordion-border="#cbd5e1" data-accordion-accent="#2563eb" data-accordion-text-color="#172033" data-accordion-radius="8" data-accordion-padding="14" contenteditable="false" style="margin:14px 0;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;overflow:hidden;"><summary data-accordion-summary contenteditable="true" style="display:list-item;padding:14px;background:#f8fafc;color:#2563eb;font-weight:700;cursor:pointer;list-style-position:inside;"><span data-accordion-icon contenteditable="false" aria-hidden="true" style="display:none;"></span><span data-accordion-title style="margin-left:8px;color:#172033;">詳しい内容を見る</span></summary><div data-accordion-content contenteditable="true" style="padding:14px;color:#172033;line-height:1.8;background:#ffffff;border-top:1px solid #cbd5e1;">ここに折りたたむ内容を入力します。</div></details>`,
+        linkCard: `<div data-inserted-component="linkCard" data-link-card-preset="standard" data-link-card-url="https://example.com" data-link-card-image-url="" data-link-card-show-image="false" data-link-card-new-tab="true" data-link-card-button-label="リンクを開く" data-link-card-accent="#2563eb" data-link-card-background="#ffffff" data-link-card-border="#cbd5e1" data-link-card-text-color="#172033" data-link-card-radius="10" contenteditable="false" style="margin:14px 0;"><a data-link-card-anchor href="https://example.com" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:stretch;gap:0;color:#172033;text-decoration:none;border:1px solid #cbd5e1;border-radius:10px;background:#ffffff;overflow:hidden;"><span data-link-card-image-wrap contenteditable="false" style="display:none;flex:0 0 34%;max-width:220px;background:#f1f5f9;"><img data-link-card-image alt="" style="display:block;width:100%;height:100%;min-height:140px;object-fit:cover;"></span><span data-link-card-body style="display:flex;flex:1 1 auto;min-width:0;flex-direction:column;justify-content:center;padding:18px;"><strong data-link-card-title contenteditable="true" style="display:block;font-size:18px;line-height:1.5;">リンク先のタイトル</strong><span data-link-card-description contenteditable="true" style="display:block;margin-top:6px;color:#64748b;line-height:1.7;">リンク先の説明を入力します。</span><span data-link-card-action contenteditable="false" style="display:inline-flex;align-self:flex-start;margin-top:12px;color:#2563eb;font-weight:700;">リンクを開く →</span></span></a></div>`,
         toc: `<nav data-inserted-component="toc" aria-label="目次" style="margin:14px 0;padding:14px 16px;border:1px solid #d9dee8;border-radius:8px;background:#fbfcff;">
           <div contenteditable="false" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
             <strong style="font-size:15px;color:#172033;">目次</strong>
@@ -13643,6 +14175,16 @@ ${bodyHtml}
           sideContent.dataset.sideContentSlot = "true";
           sideContent.contentEditable = "true";
         }
+      });
+      const beforeAfterComponents = root?.matches?.('[data-inserted-component="beforeAfter"]')
+        ? [root]
+        : Array.from(root?.querySelectorAll?.('[data-inserted-component="beforeAfter"]') || []);
+      beforeAfterComponents.forEach((component) => {
+        component.contentEditable = "false";
+        Array.from(component.children).forEach((column) => {
+          column.dataset.sideContentSlot = "true";
+          column.contentEditable = "true";
+        });
       });
       const slots = root?.matches?.("[data-side-content-slot], [data-embed-text]")
         ? [root]
@@ -14262,6 +14804,7 @@ ${bodyHtml}
     document.querySelector("#selectionToBodyButton")?.addEventListener("click", () => {
       splitPreviewSelectionIntoDocumentBlock("body");
     });
+    document.querySelector("#selectionToAccordionButton")?.addEventListener("click", applySelectionAccordion);
     const componentInsertSelect = document.querySelector("#componentInsertSelect");
     const updateComponentQuickSelection = () => {
       document.querySelectorAll(".component-quick-button").forEach((button) => {
@@ -16394,6 +16937,24 @@ ${bodyHtml}
 
     setupFileActionsMenu();
 
+    (function setupKeyboardShortcutsDialog() {
+      const button = document.querySelector("#keyboardShortcutsButton");
+      const dialog = document.querySelector("#keyboardShortcutsDialog");
+      if (!button || !dialog) return;
+      button.addEventListener("click", () => {
+        if (typeof dialog.showModal === "function") dialog.showModal();
+        else dialog.setAttribute("open", "");
+      });
+      dialog.addEventListener("click", (event) => {
+        if (event.target !== dialog) return;
+        const rect = dialog.getBoundingClientRect();
+        const inside = event.clientX >= rect.left && event.clientX <= rect.right
+          && event.clientY >= rect.top && event.clientY <= rect.bottom;
+        if (!inside) dialog.close();
+      });
+      dialog.addEventListener("close", () => button.focus());
+    })();
+
     function setupPreviewToolbarSections() {
       const toolbar = document.querySelector(".selection-toolbar");
       const selectionControls = toolbar?.querySelector(".selection-controls");
@@ -16432,6 +16993,7 @@ ${bodyHtml}
         "#selectionListButton",
         "#selectionToHeadingButton",
         "#selectionToBodyButton",
+        "#selectionToAccordionButton",
         ".component-clipboard-actions",
         ".selection-body-merge-actions",
         ".component-insert-row"
@@ -16482,7 +17044,8 @@ ${bodyHtml}
         "#selectionQuoteButton",
         "#selectionListButton",
         "#selectionToHeadingButton",
-        "#selectionToBodyButton"
+        "#selectionToBodyButton",
+        "#selectionToAccordionButton"
       ].forEach((selector) => {
         const control = selectionControls.querySelector(selector);
         if (control) transformRow.content.appendChild(control);
