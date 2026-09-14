@@ -7430,7 +7430,8 @@ ${bodyHtml}
       const query = queryInput?.value || "";
       const matches = [];
       if (!query) return { query, matches };
-      const normalizedQuery = caseSensitive ? query : query.toLocaleLowerCase();
+      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const expression = new RegExp(escapedQuery, caseSensitive ? "g" : "gi");
       const walker = document.createTreeWalker(elements.preview, NodeFilter.SHOW_TEXT, {
         acceptNode(node) {
           return node.parentElement?.closest("script, style") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
@@ -7438,11 +7439,8 @@ ${bodyHtml}
       });
       let node;
       while ((node = walker.nextNode())) {
-        const source = caseSensitive ? node.nodeValue : node.nodeValue.toLocaleLowerCase();
-        let offset = 0;
-        while ((offset = source.indexOf(normalizedQuery, offset)) >= 0) {
-          matches.push({ node, start: offset, end: offset + query.length });
-          offset += Math.max(1, query.length);
+        for (const match of node.nodeValue.matchAll(expression)) {
+          matches.push({ node, start: match.index, end: match.index + match[0].length });
         }
       }
       return { query, matches };
@@ -7508,26 +7506,17 @@ ${bodyHtml}
     }
 
     function replaceAllPreviewMatches() {
-      const query = document.querySelector("#previewSearchText")?.value || "";
+      const { query, matches } = collectPreviewSearchMatches();
       if (!query) {
         setStatus("検索する文字を入力してください");
         return;
       }
       const replacement = document.querySelector("#previewReplaceText")?.value || "";
-      const caseSensitive = document.querySelector("#previewSearchCase")?.checked;
-      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const expression = new RegExp(escapedQuery, caseSensitive ? "g" : "gi");
-      const walker = document.createTreeWalker(elements.preview, NodeFilter.SHOW_TEXT);
-      const textNodes = [];
-      let node;
-      while ((node = walker.nextNode())) textNodes.push(node);
-      let count = 0;
-      textNodes.forEach((textNode) => {
-        textNode.nodeValue = textNode.nodeValue.replace(expression, () => {
-          count += 1;
-          return replacement;
-        });
+      // Replace from the end so earlier match offsets remain valid.
+      matches.reverse().forEach(({ node, start, end }) => {
+        node.nodeValue = `${node.nodeValue.slice(0, start)}${replacement}${node.nodeValue.slice(end)}`;
       });
+      const count = matches.length;
       if (count) capturePreviewEdits();
       previewSearchState = { query: "", matches: [], index: -1 };
       updatePreviewSearchResult();
@@ -8950,7 +8939,8 @@ ${bodyHtml}
     }
 
     function normalizeLinkUrl(value) {
-      const url = value.trim();
+      // Browsers discard embedded tabs/newlines and leading ASCII controls in URLs.
+      const url = String(value || "").replace(/[\t\r\n]/g, "").replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, "").trim();
       if (!url || /^(?:javascript|data|vbscript):/i.test(url)) {
         return "";
       }
@@ -15600,6 +15590,7 @@ ${bodyHtml}
       formattedPreviewHtml = previewHistory[previewHistoryIndex];
       render({ forceReset: true });
       updateHistoryButtons();
+      scheduleAutosave();
       setStatus("プレビューを元に戻しました");
     }
     function performPreviewRedo() {
@@ -15608,6 +15599,7 @@ ${bodyHtml}
       formattedPreviewHtml = previewHistory[previewHistoryIndex];
       render({ forceReset: true });
       updateHistoryButtons();
+      scheduleAutosave();
       setStatus("プレビューをやり直しました");
     }
     function clearPreview() {
@@ -16466,6 +16458,7 @@ ${bodyHtml}
     }
 
     function performAutosave() {
+      if (autosaveTimer) clearTimeout(autosaveTimer);
       autosaveTimer = null;
       const savedAt = Date.now();
       try {
@@ -16500,10 +16493,19 @@ ${bodyHtml}
       autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DEBOUNCE_MS);
     }
 
+    window.addEventListener("pagehide", () => {
+      if (autosaveTimer) performAutosave();
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden" && autosaveTimer) performAutosave();
+    });
+
     function restoreAutosavePayload(payload, statusMessage) {
+      capturePreviewEdits();
       applySettings(payload.settings || payload, { renderPreview: false });
       formattedPreviewHtml = typeof payload.previewHtml === "string" ? payload.previewHtml : "";
       render({ forceReset: true });
+      capturePreviewEdits();
       setStatus(statusMessage);
     }
 
@@ -16543,13 +16545,11 @@ ${bodyHtml}
 
       const renderList = () => {
         list.innerHTML = "";
-        const latestRaw = localStorage.getItem(AUTOSAVE_STORAGE_KEY);
         let latestPayload = null;
-        if (latestRaw) {
-          try {
-            latestPayload = JSON.parse(latestRaw);
-          } catch { /* ignore unreadable latest autosave */ }
-        }
+        try {
+          const latestRaw = localStorage.getItem(AUTOSAVE_STORAGE_KEY);
+          if (latestRaw) latestPayload = JSON.parse(latestRaw);
+        } catch { /* ignore inaccessible or unreadable latest autosave */ }
         const history = readAutosaveHistory();
         if (!latestPayload && !history.length) {
           const empty = document.createElement("p");
@@ -16846,13 +16846,18 @@ ${bodyHtml}
         try {
           const payload = JSON.parse(String(reader.result || "{}"));
           const settings = payload.settings || payload;
+          const articleHtml = typeof payload.articleHtml === "string" ? payload.articleHtml : payload.previewHtml;
           const isFullSave = payload.saveType === "full"
-            || (!payload.saveType && typeof (payload.articleHtml || payload.previewHtml) === "string");
+            || (!payload.saveType && typeof articleHtml === "string");
+          if (isFullSave) capturePreviewEdits();
           applySettings(settings, { renderPreview: false });
-          formattedPreviewHtml = isFullSave && typeof (payload.articleHtml || payload.previewHtml) === "string"
-            ? (payload.articleHtml || payload.previewHtml)
+          formattedPreviewHtml = isFullSave && typeof articleHtml === "string"
+            ? articleHtml
             : formattedPreviewHtml;
-          if (isFullSave) render({ forceReset: true });
+          if (isFullSave) {
+            render({ forceReset: true });
+            capturePreviewEdits();
+          }
           setStatus("JSONを読み込みました");
         } catch {
           setStatus("JSONを読み込めませんでした");
@@ -17065,8 +17070,10 @@ ${bodyHtml}
         return clamped;
       };
 
-      const savedWidth = Number(localStorage.getItem(STORAGE_KEY));
-      if (savedWidth) applyWidth(savedWidth);
+      try {
+        const savedWidth = Number(localStorage.getItem(STORAGE_KEY));
+        if (Number.isFinite(savedWidth) && savedWidth > 0) applyWidth(savedWidth);
+      } catch { /* panel sizing also works without browser storage */ }
 
       let dragging = false;
       let startX = 0;
@@ -17084,7 +17091,9 @@ ${bodyHtml}
         document.body.classList.remove("is-resizing-panels");
         window.removeEventListener("pointermove", onPointerMove);
         window.removeEventListener("pointerup", stopDragging);
-        localStorage.setItem(STORAGE_KEY, String(Math.round(controlsPanel.getBoundingClientRect().width)));
+        try {
+          localStorage.setItem(STORAGE_KEY, String(Math.round(controlsPanel.getBoundingClientRect().width)));
+        } catch { /* keep the width for this session */ }
       };
 
       resizer.addEventListener("pointerdown", (event) => {
@@ -17100,7 +17109,9 @@ ${bodyHtml}
 
       resizer.addEventListener("dblclick", () => {
         layout.style.removeProperty("--controls-width");
-        localStorage.removeItem(STORAGE_KEY);
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+        } catch { /* keep the default width for this session */ }
       });
 
       resizer.addEventListener("keydown", (event) => {
