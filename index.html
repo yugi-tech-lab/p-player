@@ -7075,6 +7075,7 @@ ${bodyHtml}
       normalizeEmbeddedSideContent(elements.preview);
       normalizeXPostSpacing(elements.preview);
       normalizeLinkCardSize(elements.preview);
+      normalizeTocDesign(elements.preview);
       syncRuledCardMetricsForPreview();
       if (activeComponentIndex >= 0) {
         activeInsertedComponent = elements.preview.querySelectorAll("[data-inserted-component]")[activeComponentIndex] || null;
@@ -7188,6 +7189,7 @@ ${bodyHtml}
     function getPersistablePreviewHtml() {
       syncRuledCardMetricsForPreview();
       normalizeLinkCardSize(elements.preview);
+      normalizeTocDesign(elements.preview);
       const clone = elements.preview.cloneNode(true);
       clone.querySelectorAll(".is-document-block-active, .is-embedded-component-active, .table-cell-selected, .invalid-operation-target").forEach((element) => {
         element.classList.remove("is-document-block-active", "is-embedded-component-active", "table-cell-selected", "invalid-operation-target");
@@ -7255,6 +7257,7 @@ ${bodyHtml}
       const outputHolder = document.createElement("div");
       outputHolder.innerHTML = html;
       normalizeLinkCardSize(outputHolder);
+      normalizeTocDesign(outputHolder);
       // Embed URL cards are editor-only UI. Remove them globally before
       // converting components as a safeguard in case contenteditable editing
       // has moved a card outside its original video/X component wrapper.
@@ -11792,6 +11795,20 @@ ${bodyHtml}
         radius: linkCardPropertyBlock.querySelector("#linkCardRadius"),
         width: linkCardPropertyBlock.querySelector("#linkCardWidth"), height: linkCardPropertyBlock.querySelector("#linkCardHeight")
       };
+      const tocPropertyBlock = document.createElement("div");
+      tocPropertyBlock.className = "field list-component-settings toc-component-settings";
+      tocPropertyBlock.innerHTML = `<label>目次設定</label>
+        <div class="list-settings-group"><strong>デザイン</strong>
+          <div class="row">
+            <div class="field"><label for="tocPreset">スタイル</label><select id="tocPreset"><option value="simple">シンプル</option><option value="accent">アクセントライン</option><option value="header">カラーヘッダー</option><option value="numbered">番号強調</option><option value="dark">ダーク</option><option value="minimal">ミニマル</option></select></div>
+            <div class="field"><label for="tocTitle">タイトル</label><input id="tocTitle" type="text" value="目次" maxlength="40"></div>
+          </div>
+        </div>`;
+      linkCardPropertyBlock.after(tocPropertyBlock);
+      const tocControls = {
+        preset: tocPropertyBlock.querySelector("#tocPreset"),
+        title: tocPropertyBlock.querySelector("#tocTitle")
+      };
       componentPage.appendChild(section);
       componentPage.appendChild(dialog);
 
@@ -11891,6 +11908,7 @@ ${bodyHtml}
         code: "コード",
         xpost: "X投稿",
         video: "動画",
+        toc: "目次",
         accordion: "折りたたみ",
         linkCard: "リンクカード"
       };
@@ -11997,7 +12015,7 @@ ${bodyHtml}
             qaPropertyBlock, listPropertyBlock, comparePropertyBlock,
             notePropertyBlock, quotePropertyBlock, codePropertyBlock,
             xpostPropertyBlock, videoPropertyBlock, accordionPropertyBlock,
-            linkCardPropertyBlock].forEach((block) => {
+            linkCardPropertyBlock, tocPropertyBlock].forEach((block) => {
             block.hidden = true;
             block.classList.add("is-hidden");
             block.style.setProperty("display", "none", "important");
@@ -12033,7 +12051,7 @@ ${bodyHtml}
         propertyConvertImageButton.textContent = componentType === "image"
           ? "左右画像＋テキストへ変換"
           : "通常画像へ変換";
-        const hasDedicatedSettings = ["table", "list", "image", "imageText", "imagePair", "qa", "beforeAfter", "note", "quote", "code", "xpost", "video", "accordion", "linkCard"].includes(componentType);
+        const hasDedicatedSettings = ["table", "list", "image", "imageText", "imagePair", "qa", "beforeAfter", "note", "quote", "code", "xpost", "video", "toc", "accordion", "linkCard"].includes(componentType);
         const isImageText = componentType === "imageText";
         const supportsImageCaption = ["image", "imageText", "imagePair"].includes(componentType);
         const bubbleEnabled = isImageText && component.dataset.speechBubble === "true";
@@ -12099,6 +12117,7 @@ ${bodyHtml}
         showBlock(codePropertyBlock, componentType === "code");
         showBlock(xpostPropertyBlock, componentType === "xpost");
         showBlock(videoPropertyBlock, componentType === "video");
+        showBlock(tocPropertyBlock, componentType === "toc");
         showBlock(accordionPropertyBlock, componentType === "accordion");
         showBlock(linkCardPropertyBlock, componentType === "linkCard");
         showBlock(legacyPropertyBlocks[3], isImageText && bubbleEnabled);
@@ -12279,6 +12298,11 @@ ${bodyHtml}
         if (componentType === "video") {
           videoControls.url.value = component.dataset.embedUrl || "";
           videoControls.bottomText.value = component.dataset.videoBottomText || "";
+        }
+        if (componentType === "toc") {
+          tocControls.preset.value = ["simple", "accent", "header", "numbered", "dark", "minimal"].includes(component.dataset.tocPreset)
+            ? component.dataset.tocPreset : "simple";
+          tocControls.title.value = component.dataset.tocTitle || component.querySelector("[data-toc-title]")?.textContent || "目次";
         }
         if (componentType === "accordion") {
           const summary = component.querySelector(":scope > [data-accordion-summary]");
@@ -13494,6 +13518,12 @@ ${bodyHtml}
         if (type === "code") {
           applyCodeSettings(component);
         }
+        if (type === "toc") {
+          component.dataset.tocPreset = ["simple", "accent", "header", "numbered", "dark", "minimal"].includes(tocControls.preset.value)
+            ? tocControls.preset.value : "simple";
+          component.dataset.tocTitle = tocControls.title.value.trim() || "目次";
+          normalizeTocDesign(component);
+        }
         if (type === "accordion") {
           applyAccordionSettings(component);
         }
@@ -14181,6 +14211,11 @@ ${bodyHtml}
         input.addEventListener("input", applyComponentSpecificSettings);
         input.addEventListener("change", applyComponentSpecificSettings);
       });
+      [tocControls.preset, tocControls.title].forEach((input) => {
+        input.classList.add("component-property-input");
+        input.addEventListener("input", applyComponentSpecificSettings);
+        input.addEventListener("change", applyComponentSpecificSettings);
+      });
       [xpostControls, videoControls].forEach((controlSet) => {
         Object.values(controlSet).forEach((input) => {
           if (input === xpostControls.sideTextReset) return;
@@ -14284,9 +14319,9 @@ ${bodyHtml}
         video: `<div data-inserted-component="video" data-embed-url="" data-video-bottom-text="" data-video-bottom-html="" contenteditable="false" style="margin:14px 0;"><div data-embed-slot="true">${embedPlaceholderHtml("▶️", "動画のURL（YouTube・Vimeoなど）を設定してください")}</div></div>`,
         accordion: `<details data-inserted-component="accordion" data-accordion-preset="simple" data-accordion-icon="chevron" data-accordion-initially-open="false" data-accordion-summary-background="#f8fafc" data-accordion-content-background="#ffffff" data-accordion-border="#cbd5e1" data-accordion-accent="#2563eb" data-accordion-text-color="#172033" data-accordion-radius="8" data-accordion-padding="14" contenteditable="false" style="margin:14px 0;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;overflow:hidden;"><summary data-accordion-summary contenteditable="true" style="display:list-item;padding:14px;background:#f8fafc;color:#2563eb;font-weight:700;cursor:pointer;list-style-position:inside;"><span data-accordion-icon contenteditable="false" aria-hidden="true" style="display:none;"></span><span data-accordion-title contenteditable="true" style="margin-left:8px;color:#172033;">詳しい内容を見る</span></summary><div data-accordion-content contenteditable="true" style="padding:14px;color:#172033;line-height:1.8;background:#ffffff;border-top:1px solid #cbd5e1;">ここに折りたたむ内容を入力します。</div></details>`,
         linkCard: `<div data-inserted-component="linkCard" data-link-card-preset="standard" data-link-card-url="https://example.com" data-link-card-image-url="" data-link-card-show-image="false" data-link-card-new-tab="true" data-link-card-button-label="リンクを開く" data-link-card-accent="#2563eb" data-link-card-background="#ffffff" data-link-card-border="#cbd5e1" data-link-card-text-color="#172033" data-link-card-radius="10" data-link-card-width="66.7" data-link-card-height="94" contenteditable="false" style="width:66.7%;max-width:100%;box-sizing:border-box;margin:9px 0;"><a data-link-card-anchor href="https://example.com" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:stretch;gap:0;height:94px;box-sizing:border-box;color:#172033;text-decoration:none;border:1px solid #cbd5e1;border-radius:10px;background:#ffffff;overflow:hidden;"><span data-link-card-image-wrap contenteditable="false" style="display:none;flex:0 0 34%;height:100%;max-width:220px;background:#f1f5f9;"><img data-link-card-image alt="" style="display:block;width:100%;height:100%;min-height:0;max-height:100%;object-fit:cover;"></span><span data-link-card-body style="display:flex;flex:1 1 auto;min-width:0;box-sizing:border-box;flex-direction:column;justify-content:center;overflow:hidden;padding:6px 10px;"><strong data-link-card-title contenteditable="true" style="display:block;font-size:18px;line-height:1.2;">リンク先のタイトル</strong><span data-link-card-description contenteditable="true" style="display:block;margin-top:2px;color:#64748b;font-size:16px;line-height:1.2;">リンク先の説明を入力します。</span><span data-link-card-action contenteditable="false" style="display:inline-flex;align-self:flex-start;margin-top:4px;color:#2563eb;font-size:16px;font-weight:700;line-height:1.2;">リンクを開く →</span></span></a></div>`,
-        toc: `<nav data-inserted-component="toc" aria-label="目次" style="margin:14px 0;padding:14px 16px;border:1px solid #d9dee8;border-radius:8px;background:#fbfcff;">
-          <div contenteditable="false" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
-            <strong style="font-size:15px;color:#172033;">目次</strong>
+        toc: `<nav data-inserted-component="toc" data-toc-preset="simple" data-toc-title="目次" aria-label="目次" style="margin:14px 0;padding:14px 16px;border:1px solid #d9dee8;border-radius:8px;background:#fbfcff;box-shadow:none;">
+          <div data-toc-header contenteditable="false" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px;padding:0;background:transparent;border-radius:0;">
+            <strong data-toc-title contenteditable="false" style="font-size:15px;color:#172033;">目次</strong>
             <button type="button" data-toc-refresh style="cursor:pointer;padding:3px 10px;font-size:12px;border:1px solid #d9dee8;border-radius:5px;background:#ffffff;color:#64748b;" title="現在の見出しから一覧を作り直します（この中の手動編集は上書きされます）">見出しを取得</button>
           </div>
           <ol data-toc-list contenteditable="true" style="margin:0;padding-left:20px;line-height:1.9;"><li data-toc-empty style="color:#94a3b8;list-style:none;margin-left:-20px;">「見出しを取得」を押すと、現在の見出しから目次を作成します</li></ol>
@@ -14573,6 +14608,72 @@ ${bodyHtml}
       });
     }
 
+    function normalizeTocDesign(root) {
+      const components = root?.matches?.('[data-inserted-component="toc"]')
+        ? [root]
+        : Array.from(root?.querySelectorAll?.('[data-inserted-component="toc"]') || []);
+      const presets = {
+        simple: { background: "#fbfcff", border: "1px solid #d9dee8", borderLeft: "1px solid #d9dee8", radius: "8px", shadow: "none", padding: "14px 16px", title: "#172033", text: "#334155", accent: "#64748b", headerBackground: "transparent", headerMargin: "0 0 8px", headerPadding: "0", headerRadius: "0", listStyle: "decimal", listPadding: "20px" },
+        accent: { background: "#eff6ff", border: "1px solid #bfdbfe", borderLeft: "5px solid #2563eb", radius: "8px", shadow: "none", padding: "14px 16px", title: "#1d4ed8", text: "#1e3a8a", accent: "#2563eb", headerBackground: "transparent", headerMargin: "0 0 8px", headerPadding: "0", headerRadius: "0", listStyle: "decimal", listPadding: "20px" },
+        header: { background: "#ffffff", border: "1px solid #99f6e4", borderLeft: "1px solid #99f6e4", radius: "10px", shadow: "0 3px 10px rgba(15,118,110,.10)", padding: "14px 16px", title: "#ffffff", text: "#134e4a", accent: "#0f766e", headerBackground: "#0f766e", headerMargin: "-14px -16px 10px", headerPadding: "9px 12px", headerRadius: "9px 9px 0 0", listStyle: "decimal", listPadding: "20px" },
+        numbered: { background: "#fffbeb", border: "1px solid #fcd34d", borderLeft: "1px solid #fcd34d", radius: "10px", shadow: "none", padding: "14px 16px", title: "#92400e", text: "#78350f", accent: "#d97706", headerBackground: "transparent", headerMargin: "0 0 8px", headerPadding: "0", headerRadius: "0", listStyle: "decimal-leading-zero", listPadding: "30px" },
+        dark: { background: "#172033", border: "1px solid #475569", borderLeft: "1px solid #475569", radius: "10px", shadow: "0 5px 16px rgba(15,23,42,.18)", padding: "14px 16px", title: "#f8fafc", text: "#e2e8f0", accent: "#22d3ee", headerBackground: "#263247", headerMargin: "-14px -16px 10px", headerPadding: "9px 12px", headerRadius: "9px 9px 0 0", listStyle: "decimal", listPadding: "20px" },
+        minimal: { background: "transparent", border: "0", borderLeft: "0", radius: "0", shadow: "none", padding: "10px 0", title: "#172033", text: "#475569", accent: "#64748b", headerBackground: "transparent", headerMargin: "0 0 6px", headerPadding: "0 0 6px", headerRadius: "0", listStyle: "none", listPadding: "0" }
+      };
+      components.forEach((component) => {
+        const presetName = presets[component.dataset.tocPreset] ? component.dataset.tocPreset : "simple";
+        const preset = presets[presetName];
+        const header = component.querySelector(":scope > [data-toc-header], :scope > div");
+        const title = header?.querySelector("[data-toc-title], strong");
+        const button = header?.querySelector("[data-toc-refresh]");
+        const list = component.querySelector("[data-toc-list]");
+        component.dataset.tocPreset = presetName;
+        if (header) header.dataset.tocHeader = "true";
+        if (title) {
+          title.dataset.tocTitle = "true";
+          title.contentEditable = "false";
+          component.dataset.tocTitle = component.dataset.tocTitle || title.textContent.trim() || "目次";
+          title.textContent = component.dataset.tocTitle;
+          title.style.color = preset.title;
+          title.style.fontSize = "15px";
+        }
+        component.style.margin = "14px 0";
+        component.style.padding = preset.padding;
+        component.style.background = preset.background;
+        component.style.border = preset.border;
+        component.style.borderLeft = preset.borderLeft;
+        component.style.borderRadius = preset.radius;
+        component.style.boxShadow = preset.shadow;
+        if (header) {
+          header.style.background = preset.headerBackground;
+          header.style.margin = preset.headerMargin;
+          header.style.padding = preset.headerPadding;
+          header.style.borderRadius = preset.headerRadius;
+        }
+        if (button) {
+          button.style.color = presetName === "header" || presetName === "dark" ? preset.title : preset.accent;
+          button.style.background = presetName === "header" || presetName === "dark" ? "rgba(255,255,255,.12)" : "#ffffff";
+          button.style.borderColor = presetName === "header" || presetName === "dark" ? "rgba(255,255,255,.35)" : preset.accent;
+        }
+        if (list) {
+          list.style.color = preset.text;
+          list.style.listStyleType = preset.listStyle;
+          list.style.paddingLeft = preset.listPadding;
+          list.style.lineHeight = "1.9";
+          list.querySelectorAll("li").forEach((item) => {
+            item.style.margin = "2px 0";
+            if (presetName === "numbered") item.style.fontWeight = "600";
+            else item.style.fontWeight = "";
+          });
+          list.querySelectorAll("a").forEach((link) => {
+            link.style.color = "inherit";
+            link.style.textDecoration = presetName === "minimal" ? "underline" : "none";
+            link.style.textUnderlineOffset = "3px";
+          });
+        }
+      });
+    }
+
     function normalizeEmbeddedSideContent(root) {
       const imageTextComponents = root?.matches?.('[data-inserted-component="imageText"]')
         ? [root]
@@ -14640,6 +14741,7 @@ ${bodyHtml}
       list.innerHTML = entries.length
         ? entries.map((entry) => `<li><a href="#${escapeHtml(entry.id)}">${escapeHtml(entry.text)}</a></li>`).join("")
         : '<li data-toc-empty style="color:#94a3b8;list-style:none;margin-left:-20px;">見出しがまだありません</li>';
+      normalizeTocDesign(component);
       capturePreviewEdits();
       setStatus(entries.length ? `目次を更新しました（見出し${entries.length}件）` : "見出しが見つかりませんでした");
     }
