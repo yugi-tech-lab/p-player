@@ -9567,7 +9567,6 @@ ${bodyHtml}
           <option value="table">テーブル</option>
           <option value="image">画像</option>
           <option value="imageText">左右画像＋テキスト</option>
-          <option value="imagePair">画像横並び（2〜3枚）</option>
           <option value="beforeAfter">Before / After</option>
           <option value="code">コード</option>
           <option value="rule">水平線</option>
@@ -9592,7 +9591,6 @@ ${bodyHtml}
           ["table", "▦", "テーブル"],
           ["image", "🖼️", "画像"],
           ["imageText", "📰", "左右画像＋テキスト"],
-          ["imagePair", "🎞️", "画像横並び（2〜3枚）"],
           ["code", "💻", "コード"],
           ["accordion", "▾", "折りたたみ"],
           ["rule", "➖", "水平線"],
@@ -11234,7 +11232,7 @@ ${bodyHtml}
       const componentImageLinkUrl2 = imagePairLinkField.querySelector("#componentImageLinkUrl2");
       const imagePairCountField = document.createElement("div");
       imagePairCountField.className = "field image-pair-count-field";
-      imagePairCountField.innerHTML = `<label for="componentImagePairCount">画像枚数</label><select id="componentImagePairCount"><option value="2">2枚</option><option value="3">3枚</option></select>`;
+      imagePairCountField.innerHTML = `<label for="componentImagePairCount">画像枚数</label><select id="componentImagePairCount"><option value="1">1枚</option><option value="2">2枚</option><option value="3">3枚</option></select>`;
       elements.imageAutoHeight?.closest(".field")?.after(imagePairCountField);
       imagePairCountField.after(imageCaptionToggleField);
       const componentImagePairCount = imagePairCountField.querySelector("#componentImagePairCount");
@@ -12023,9 +12021,10 @@ ${bodyHtml}
         dialog._targetComponent = component;
         section.classList.remove("is-disabled");
         const componentType = component.dataset.insertedComponent;
-        legacyPropertyBlocks[2]?.classList.toggle("is-image-pair-layout", componentType === "imagePair");
-        legacyPropertyBlocks[2]?.classList.toggle("is-caption-inline-layout", ["image", "imageText"].includes(componentType));
-        if (componentType === "imagePair") {
+        const isImageGallery = ["image", "imagePair"].includes(componentType);
+        legacyPropertyBlocks[2]?.classList.toggle("is-image-pair-layout", isImageGallery);
+        legacyPropertyBlocks[2]?.classList.toggle("is-caption-inline-layout", componentType === "imageText");
+        if (isImageGallery) {
           imagePrimaryGroup.appendChild(imageCaptionToggleField);
         } else {
           imagePairCountField.after(imageCaptionToggleField);
@@ -12052,17 +12051,17 @@ ${bodyHtml}
           : component.firstElementChild?.querySelector("[data-image-caption]");
         componentImageCaption.checked = Boolean(existingCaption);
         componentTableCaption.checked = Boolean(component.querySelector(":scope > caption"));
-        componentImageCaptionLabel.lastChild.nodeValue = componentType === "imagePair"
+        componentImageCaptionLabel.lastChild.nodeValue = isImageGallery
           ? "1枚目の下部テキストを表示" : "画像下テキストを表示";
         componentImageCaption2.checked = Boolean(component.children[1]?.querySelector("[data-image-caption]"));
         componentImageCaption3.checked = Boolean(component.children[2]?.querySelector("[data-image-caption]"))
           || (!component.children[2] && component.dataset.imageCaption3 === "true");
         if (primaryImageLinkLabel) {
-          primaryImageLinkLabel.textContent = componentType === "imagePair"
+          primaryImageLinkLabel.textContent = isImageGallery
             ? "1枚目のリンクURL" : "画像クリック時のリンクURL";
         }
         imagePrimaryGroup.querySelector(".component-property-group-title").textContent =
-          componentType === "imagePair" ? "1枚目" : "画像URL・リンク";
+          isImageGallery ? "1枚目" : "画像URL・リンク";
         // Components without dedicated settings (note/quote/qa/beforeAfter/code/
         // rule) already have their look baked into their own template, so the
         // generic color/background/border/padding controls are hidden for them
@@ -12092,7 +12091,7 @@ ${bodyHtml}
         showBlock(imagePairCaptionToggleField, componentType === "imagePair");
         showBlock(imagePairCaption3ToggleField, componentType === "imagePair" && component.children.length >= 3);
         showBlock(tableCaptionToggleField, componentType === "table");
-        showBlock(imagePairCountField, componentType === "imagePair");
+        showBlock(imagePairCountField, ["image", "imagePair"].includes(componentType));
         showBlock(imagePrimaryGroup, usesImageUrl);
         showBlock(imageSecondaryGroup, componentType === "imagePair");
         showBlock(imageThirdGroup, componentType === "imagePair" && component.children.length >= 3);
@@ -12141,9 +12140,12 @@ ${bodyHtml}
         if (["image", "imageText", "imagePair"].includes(componentType)) {
           const componentImages = Array.from(component.querySelectorAll("img[data-inserted-image]"));
           elements.imagePath.value = componentImages[0]?.getAttribute("src") || "";
-          elements.imagePath2.value = componentImages[1]?.getAttribute("src") || "";
+          elements.imagePath2.value = componentImages[1]?.getAttribute("src")
+            || component.dataset.imagePath2 || "";
+          componentImagePairCount.value = componentType === "image"
+            ? "1"
+            : componentImages.length >= 3 ? "3" : "2";
           if (componentType === "imagePair") {
-            componentImagePairCount.value = componentImages.length >= 3 ? "3" : "2";
             componentImagePath3.value = componentImages[2]?.getAttribute("src")
               || component.dataset.imagePath3 || "";
           }
@@ -12407,7 +12409,8 @@ ${bodyHtml}
           elements.imageLinkUrl.value = imageNodes[0]?.parentElement?.tagName === "A"
             ? imageNodes[0].parentElement.getAttribute("href") || "" : "";
           componentImageLinkUrl2.value = imageNodes[1]?.parentElement?.tagName === "A"
-            ? imageNodes[1].parentElement.getAttribute("href") || "" : "";
+            ? imageNodes[1].parentElement.getAttribute("href") || ""
+            : component.dataset.imageLinkUrl2 || "";
           componentImageLinkUrl3.value = imageNodes[2]?.parentElement?.tagName === "A"
             ? imageNodes[2].parentElement.getAttribute("href") || ""
             : component.dataset.imageLinkUrl3 || "";
@@ -12502,19 +12505,131 @@ ${bodyHtml}
           component.dataset.speechBubble = "false";
         }
       };
+      const rememberImageHost = (component, host, index) => {
+        if (!component || !host || index < 1 || index > 2) return;
+        const suffix = String(index + 1);
+        const image = host.querySelector("img[data-inserted-image]");
+        const link = image?.parentElement?.tagName === "A" ? image.parentElement : null;
+        const caption = host.querySelector("[data-image-caption]");
+        component.dataset[`imagePath${suffix}`] = image?.getAttribute("src") || "";
+        component.dataset[`imageLinkUrl${suffix}`] = link?.getAttribute("href") || "";
+        component.dataset[`imageCaption${suffix}`] = String(Boolean(caption));
+        if (caption) component.dataset[`imageCaptionText${suffix}`] = caption.innerHTML;
+      };
+      const restoreImageHost = (component, host, index) => {
+        if (!component || !host || index < 1 || index > 2) return;
+        const suffix = String(index + 1);
+        const fallbackPath = index === 1 ? elements.imagePath2.value : componentImagePath3.value;
+        const fallbackLink = index === 1 ? componentImageLinkUrl2.value : componentImageLinkUrl3.value;
+        const image = host.querySelector("img[data-inserted-image]");
+        const source = getImageSource(component.dataset[`imagePath${suffix}`] || fallbackPath || "")
+          || sampleImageSrc;
+        if (image) image.setAttribute("src", source);
+        const linkUrl = component.dataset[`imageLinkUrl${suffix}`] || fallbackLink || "";
+        if (image && linkUrl) {
+          const link = document.createElement("a");
+          link.dataset.insertedImageLink = "true";
+          link.href = linkUrl;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.style.display = "block";
+          image.before(link);
+          link.appendChild(image);
+        }
+        if (component.dataset[`imageCaption${suffix}`] === "true") {
+          const caption = document.createElement("div");
+          caption.dataset.imageCaption = "true";
+          caption.contentEditable = "true";
+          caption.innerHTML = component.dataset[`imageCaptionText${suffix}`]
+            || `${suffix}枚目の画像下テキストを入力`;
+          caption.style.cssText = "margin-top:6px;color:#64748b;text-align:center;overflow-wrap:anywhere;";
+          host.appendChild(caption);
+        }
+      };
+      const convertImageCount = (component, desiredCount) => {
+        const sourceType = component?.dataset.insertedComponent;
+        if (!["image", "imagePair"].includes(sourceType)) return component;
+        if ((sourceType === "image" && desiredCount === 1)
+          || (sourceType === "imagePair" && desiredCount >= 2)) return component;
+
+        const holder = document.createElement("div");
+        holder.innerHTML = insertedComponentHtml(desiredCount === 1 ? "image" : "imagePair");
+        const replacement = holder.firstElementChild;
+        const sourceImage = component.querySelector("img[data-inserted-image]");
+        const sourceMedia = sourceImage?.parentElement?.tagName === "A"
+          ? sourceImage.parentElement : sourceImage;
+        const sourceCaption = sourceType === "image"
+          ? component.querySelector("figcaption, [data-image-caption]")
+          : component.firstElementChild?.querySelector("[data-image-caption]");
+        if (!replacement || !sourceMedia) return component;
+
+        Object.entries(component.dataset).forEach(([key, value]) => {
+          replacement.dataset[key] = value;
+        });
+        if (sourceType === "imagePair") {
+          Array.from(component.children).slice(1, 3).forEach((host, index) => {
+            rememberImageHost(replacement, host, index + 1);
+          });
+        }
+
+        if (desiredCount === 1) {
+          replacement.dataset.insertedComponent = "image";
+          delete replacement.dataset.imagePairCount;
+          replacement.style.width = `${Math.max(10, Math.min(100, Number(component.dataset.imageFixedWidth) || 100))}%`;
+          replacement.style.marginLeft = "auto";
+          replacement.style.marginRight = "auto";
+          replacement.querySelector("img[data-inserted-image]")?.replaceWith(sourceMedia);
+          if (sourceCaption) {
+            const caption = document.createElement("figcaption");
+            caption.dataset.imageCaption = "true";
+            caption.contentEditable = "true";
+            caption.innerHTML = sourceCaption.innerHTML;
+            caption.style.cssText = sourceCaption.style.cssText;
+            replacement.appendChild(caption);
+          }
+        } else {
+          replacement.dataset.insertedComponent = "imagePair";
+          replacement.dataset.imagePairCount = String(desiredCount);
+          const firstHost = replacement.firstElementChild;
+          firstHost?.querySelector("img[data-inserted-image]")?.replaceWith(sourceMedia);
+          if (sourceCaption && firstHost) {
+            const caption = document.createElement("div");
+            caption.dataset.imageCaption = "true";
+            caption.contentEditable = "true";
+            caption.innerHTML = sourceCaption.innerHTML;
+            caption.style.cssText = sourceCaption.style.cssText;
+            firstHost.appendChild(caption);
+          }
+          while (replacement.children.length < desiredCount) {
+            const host = document.createElement("div");
+            host.contentEditable = "false";
+            host.style.minWidth = "0";
+            const image = document.createElement("img");
+            image.dataset.insertedImage = "true";
+            image.alt = "";
+            image.style.cssText = "display:block;width:100%;height:240px;object-fit:contain;";
+            host.appendChild(image);
+            replacement.appendChild(host);
+          }
+          Array.from(replacement.children).slice(1, desiredCount).forEach((host, index) => {
+            restoreImageHost(replacement, host, index + 1);
+          });
+          replacement.style.gridTemplateColumns = `repeat(${desiredCount},minmax(0,1fr))`;
+        }
+
+        component.replaceWith(replacement);
+        activeInsertedComponent = replacement;
+        activePreviewTable = null;
+        savedPreviewRange = null;
+        return replacement;
+      };
       const ensureImagePairCount = (component) => {
         if (component?.dataset.insertedComponent !== "imagePair") return;
         const desiredCount = componentImagePairCount.value === "3" ? 3 : 2;
         let hosts = Array.from(component.children);
         while (hosts.length > desiredCount) {
           const host = hosts.pop();
-          const image = host?.querySelector("img[data-inserted-image]");
-          const caption = host?.querySelector("[data-image-caption]");
-          const link = image?.parentElement?.tagName === "A" ? image.parentElement : null;
-          component.dataset.imagePath3 = image?.getAttribute("src") || componentImagePath3.value || "";
-          component.dataset.imageLinkUrl3 = link?.getAttribute("href") || componentImageLinkUrl3.value || "";
-          component.dataset.imageCaption3 = String(Boolean(caption));
-          if (caption) component.dataset.imageCaptionText3 = caption.innerHTML;
+          rememberImageHost(component, host, hosts.length);
           host?.remove();
         }
         while (hosts.length < desiredCount) {
@@ -12523,12 +12638,11 @@ ${bodyHtml}
           host.style.minWidth = "0";
           const image = document.createElement("img");
           image.dataset.insertedImage = "true";
-          image.src = getImageSource(componentImagePath3.value || component.dataset.imagePath3 || "")
-            || sampleImageSrc;
           image.alt = "";
           image.style.cssText = `display:block;width:100%;height:${elements.imageAutoHeight.checked ? "auto" : `${Math.max(40, Number(elements.imageHeight.value) || 240)}px`};object-fit:contain;`;
           host.appendChild(image);
           component.appendChild(host);
+          restoreImageHost(component, host, hosts.length);
           hosts.push(host);
         }
         component.dataset.imagePairCount = String(desiredCount);
@@ -12542,6 +12656,7 @@ ${bodyHtml}
           if (source) image.setAttribute("src", source);
         });
         if (component.dataset.insertedComponent === "imagePair") {
+          component.dataset.imagePath2 = values[1] || component.dataset.imagePath2 || "";
           component.dataset.imagePath3 = values[2] || component.dataset.imagePath3 || "";
         }
       };
@@ -12649,8 +12764,12 @@ ${bodyHtml}
           return linkUrl;
         };
         const firstLinkUrl = normalizeImageLink(elements.imageLinkUrl.value);
-        const secondLinkUrl = type === "imagePair" ? normalizeImageLink(componentImageLinkUrl2.value) : firstLinkUrl;
-        const thirdLinkUrl = type === "imagePair" ? normalizeImageLink(componentImageLinkUrl3.value) : firstLinkUrl;
+        const secondLinkUrl = type === "imagePair"
+          ? normalizeImageLink(componentImageLinkUrl2.value)
+          : type === "image" ? normalizeImageLink(component.dataset.imageLinkUrl2 || "") : firstLinkUrl;
+        const thirdLinkUrl = type === "imagePair"
+          ? normalizeImageLink(componentImageLinkUrl3.value)
+          : type === "image" ? normalizeImageLink(component.dataset.imageLinkUrl3 || "") : firstLinkUrl;
         elements.imageLinkUrl.value = firstLinkUrl;
         componentImageLinkUrl2.value = secondLinkUrl;
         componentImageLinkUrl3.value = thirdLinkUrl;
@@ -13792,7 +13911,10 @@ ${bodyHtml}
       componentImagePairCount.classList.add("component-property-input");
       componentImagePairCount.addEventListener("change", () => {
         const component = getTargetComponent();
-        if (component?.dataset.insertedComponent !== "imagePair") return;
+        if (!["image", "imagePair"].includes(component?.dataset.insertedComponent)) return;
+        const desiredCount = Math.max(1, Math.min(3, Number(componentImagePairCount.value) || 1));
+        const converted = convertImageCount(component, desiredCount);
+        if (converted !== component) sync();
         applyComponentSpecificSettings();
         sync();
       });

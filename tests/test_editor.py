@@ -118,6 +118,104 @@ class EditorTests(unittest.TestCase):
         }""", types)
         self.assertCountEqual(result, types)
 
+    def test_image_insert_ui_is_unified_and_legacy_types_remain_supported(self):
+        result = self.page.evaluate("""() => {
+            const insertTypes = [...document.querySelectorAll('#componentInsertSelect option')]
+              .map(option => option.value).filter(Boolean);
+            const quickTypes = [...document.querySelectorAll('.component-quick-button')]
+              .map(button => button.dataset.componentType);
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedComponentHtml('imagePair');
+            const legacyPair = holder.firstElementChild;
+            elements.preview.replaceChildren(legacyPair);
+            activeInsertedComponent = legacyPair;
+            document.querySelector('.inserted-component-properties')._sync();
+            const pairLayoutClass = document.querySelector('.type-option-image').classList.contains('is-image-pair-layout');
+            const legacyCount = document.querySelector('#componentImagePairCount').value;
+            holder.innerHTML = insertedComponentHtml('image');
+            const singleImage = holder.firstElementChild;
+            elements.preview.replaceChildren(singleImage);
+            activeInsertedComponent = singleImage;
+            document.querySelector('.inserted-component-properties')._sync();
+            return {
+              insertTypes, quickTypes,
+              legacyType: legacyPair.dataset.insertedComponent,
+              legacyCount,
+              pairLayoutClass,
+              singleLayoutClass: document.querySelector('.type-option-image').classList.contains('is-image-pair-layout'),
+              singleGroupTitle: document.querySelector('.component-image-primary-group .component-property-group-title').textContent,
+              singleLinkLabel: document.querySelector('.component-image-primary-group label[for="imageLinkUrl"]').textContent,
+              singleCaptionInGroup: Boolean(document.querySelector('.component-image-primary-group #componentImageCaption'))
+            };
+        }""")
+        self.assertNotIn("imagePair", result["insertTypes"])
+        self.assertNotIn("imagePair", result["quickTypes"])
+        self.assertIn("image", result["insertTypes"])
+        self.assertIn("image", result["quickTypes"])
+        self.assertEqual(result["legacyType"], "imagePair")
+        self.assertEqual(result["legacyCount"], "2")
+        self.assertTrue(result["pairLayoutClass"])
+        self.assertTrue(result["singleLayoutClass"])
+        self.assertEqual(result["singleGroupTitle"], "1枚目")
+        self.assertEqual(result["singleLinkLabel"], "1枚目のリンクURL")
+        self.assertTrue(result["singleCaptionInGroup"])
+
+    def test_image_count_conversion_preserves_legacy_pair_content(self):
+        result = self.page.evaluate("""() => {
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedComponentHtml('imagePair');
+            const pair = holder.firstElementChild;
+            const images = pair.querySelectorAll('img[data-inserted-image]');
+            images[0].src = 'https://example.com/one.png';
+            images[1].src = 'https://example.com/two.png';
+            const secondLink = document.createElement('a');
+            secondLink.href = 'https://example.com/two';
+            images[1].before(secondLink);
+            secondLink.appendChild(images[1]);
+            const secondCaption = document.createElement('div');
+            secondCaption.dataset.imageCaption = 'true';
+            secondCaption.contentEditable = 'true';
+            secondCaption.textContent = 'second caption';
+            pair.children[1].appendChild(secondCaption);
+            elements.preview.replaceChildren(pair);
+            activeInsertedComponent = pair;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const count = document.querySelector('#componentImagePairCount');
+            count.value = '1';
+            count.dispatchEvent(new Event('change', {bubbles: true}));
+            const singleType = activeInsertedComponent.dataset.insertedComponent;
+            count.value = '3';
+            count.dispatchEvent(new Event('change', {bubbles: true}));
+            const restored = activeInsertedComponent;
+            const restoredImages = restored.querySelectorAll('img[data-inserted-image]');
+            const restoredState = {
+              singleType,
+              restoredType: restored.dataset.insertedComponent,
+              count: restoredImages.length,
+              firstSrc: restoredImages[0].getAttribute('src'),
+              secondSrc: restoredImages[1].getAttribute('src'),
+              secondLink: restoredImages[1].parentElement.getAttribute('href'),
+              secondCaption: restored.children[1].querySelector('[data-image-caption]')?.textContent
+            };
+            count.value = '2';
+            count.dispatchEvent(new Event('change', {bubbles: true}));
+            restoredState.reducedCount = activeInsertedComponent.querySelectorAll('img[data-inserted-image]').length;
+            count.value = '3';
+            count.dispatchEvent(new Event('change', {bubbles: true}));
+            restoredState.expandedCount = activeInsertedComponent.querySelectorAll('img[data-inserted-image]').length;
+            return restoredState;
+        }""")
+        self.assertEqual(result["singleType"], "image")
+        self.assertEqual(result["restoredType"], "imagePair")
+        self.assertEqual(result["count"], 3)
+        self.assertEqual(result["firstSrc"], "https://example.com/one.png")
+        self.assertEqual(result["secondSrc"], "https://example.com/two.png")
+        self.assertEqual(result["secondLink"], "https://example.com/two")
+        self.assertEqual(result["secondCaption"], "second caption")
+        self.assertEqual(result["reducedCount"], 2)
+        self.assertEqual(result["expandedCount"], 3)
+
     def test_obfuscated_script_url_is_removed(self):
         result = self.page.evaluate("""() => {
             return sanitizeMarkdownHtml('<a href="java&#10;script:alert(1)">link</a>');
