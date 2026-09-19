@@ -78,14 +78,18 @@ class EditorTests(unittest.TestCase):
                                      afterFailure=True, afterSuccess=False, afterUndo=True, afterRedo=False))
 
     def test_all_parts_json_and_html_round_trip(self):
-        types = ['list', 'note', 'quote', 'qa', 'table', 'image', 'imageText', 'imagePair',
+        types = ['heading', 'body', 'list', 'note', 'quote', 'qa', 'table', 'image', 'imageText', 'imagePair',
                  'beforeAfter', 'code', 'rule', 'xpost', 'video', 'accordion', 'linkCard', 'toc']
         result = self.page.evaluate("""async types => {
             window.twttr = {widgets:{load:() => {}}};
             const results = [];
             for (const type of types) {
               const holder = document.createElement('div');
-              holder.innerHTML = insertedComponentHtml(type);
+              if (['heading', 'body'].includes(type)) {
+                const fragment = document.createDocumentFragment();
+                fragment.append('Round trip text');
+                holder.append(createDocumentBlockFromFragment(type, fragment, readDocumentBlockSettings(type)));
+              } else holder.innerHTML = insertedComponentHtml(type);
               const component = holder.firstElementChild;
               if (type === 'xpost') component.dataset.embedUrl = 'https://x.com/test/status/123';
               if (type === 'video') component.dataset.embedUrl = 'https://youtu.be/abcdefghijk';
@@ -99,7 +103,7 @@ class EditorTests(unittest.TestCase):
               importArticleHtml(exported);
               const htmlPart = elements.preview.querySelector(`[data-inserted-component="${type}"]`);
               results.push({type, json:!!jsonPart, html:!!htmlPart,
-                textKept: ['xpost','video','toc'].includes(type) || htmlPart?.textContent.replace(/\s/g, '') === jsonText?.replace(/\s/g, '')});
+                textKept: ['xpost','video','toc'].includes(type) || htmlPart?.textContent.replace(/\\s/g, '') === jsonText?.replace(/\\s/g, '')});
             }
             return results;
         }""", types)

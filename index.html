@@ -5579,8 +5579,8 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
         <section class="panel preview" aria-label="プレビュー">
           <div class="preview-heading-row">
             <h2>プレビュー</h2>
-            <span class="active-article-file-path" id="activeArticleFilePath" hidden></span>
             <span id="articleSaveState" style="font-size:0.75rem;color:#9a5b0a;white-space:nowrap;" aria-live="polite"></span>
+            <span class="active-article-file-path" id="activeArticleFilePath" hidden></span>
             <span class="character-count" id="characterCount" title="空白と改行を除いた、プレビュー内の文字数です">文字数 0</span>
             <div class="preview-history-actions">
               <button class="secondary" id="keyboardShortcutsButton" type="button" aria-haspopup="dialog" aria-controls="keyboardShortcutsDialog">⌨ ショートカット</button>
@@ -7329,6 +7329,7 @@ ${bodyHtml}
     }
 
     function capturePreviewEdits(historyOptions = {}) {
+      if (previewComposing) return;
       const componentProperties = document.querySelector(".inserted-component-properties");
       normalizeEmbeddedSideContent(elements.preview);
       syncEditableMediaTexts();
