@@ -5580,6 +5580,7 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
           <div class="preview-heading-row">
             <h2>プレビュー</h2>
             <span class="active-article-file-path" id="activeArticleFilePath" hidden></span>
+            <span id="articleSaveState" style="font-size:0.75rem;color:#9a5b0a;white-space:nowrap;" aria-live="polite"></span>
             <span class="character-count" id="characterCount" title="空白と改行を除いた、プレビュー内の文字数です">文字数 0</span>
             <div class="preview-history-actions">
               <button class="secondary" id="keyboardShortcutsButton" type="button" aria-haspopup="dialog" aria-controls="keyboardShortcutsDialog">⌨ ショートカット</button>
@@ -7651,6 +7652,32 @@ ${bodyHtml}
     let previewHistoryIndex = -1;
     let restoringPreviewHistory = false;
     let lastPreviewTyping = null;
+    let previewComposing = false;
+    let savedArticleHtml = null;
+    let articleSavedAt = "";
+
+    function articleHasUnsavedChanges() {
+      return savedArticleHtml !== null && (previewComposing || formattedPreviewHtml !== savedArticleHtml);
+    }
+    function refreshArticleSaveState() {
+      const label = document.querySelector('#articleSaveState');
+      if (!label) return;
+      label.textContent = articleHasUnsavedChanges() ? '● 未保存' : articleSavedAt ? `保存済み ${articleSavedAt}` : '';
+      label.title = '記事JSONへの保存状態です。ブラウザ内の自動保存とは別です。';
+    }
+    function markArticleSaved(html = formattedPreviewHtml, saved = false) {
+      savedArticleHtml = html;
+      articleSavedAt = saved ? new Date().toLocaleTimeString('ja-JP') : '';
+      refreshArticleSaveState();
+    }
+    function confirmUnsavedArticle() {
+      return !articleHasUnsavedChanges() || window.confirm('未保存の変更があります。記事JSONに保存せず、現在の記事を置き換えますか？');
+    }
+    window.addEventListener('beforeunload', (event) => {
+      if (!articleHasUnsavedChanges()) return;
+      event.preventDefault();
+      event.returnValue = '';
+    });
     let previewSearchState = { query: "", matches: [], index: -1 };
     let documentBlockModeReady = false;
     let documentPropertyScope = "selected";
@@ -7817,7 +7844,8 @@ ${bodyHtml}
         content = document.createElement("span");
         content.dataset.headingContent = "true";
         content.contentEditable = "true";
-        existingNodes.forEach((node) => content.appendChild(node));
+        existingNodes.filter((node) => !node.matches?.('[data-toc-heading-number]'))
+          .forEach((node) => content.appendChild(node));
         heading.appendChild(content);
       }
       let prefix = heading.querySelector(":scope > [data-heading-prefix]");
@@ -8711,6 +8739,7 @@ ${bodyHtml}
     }
 
     function updateHistoryButtons() {
+      refreshArticleSaveState();
       const undoButton = document.querySelector("#undoButton");
       const redoButton = document.querySelector("#redoButton");
       if (undoButton) undoButton.disabled = previewHistoryIndex <= 0;
@@ -8718,7 +8747,7 @@ ${bodyHtml}
     }
 
     function recordPreviewState(html, { typingTarget = null } = {}) {
-      if (restoringPreviewHistory) return;
+      if (restoringPreviewHistory || previewComposing) return;
       const now = Date.now();
       if (previewHistory[previewHistoryIndex] === html) {
         updateHistoryButtons();
@@ -10595,7 +10624,19 @@ ${bodyHtml}
       const body = event.target.closest?.('[data-inserted-component="body"]');
       if (body) syncRuledCardMetrics(body);
     }, true);
+    elements.preview.addEventListener('compositionstart', () => {
+      capturePreviewEdits();
+      lastPreviewTyping = null;
+      previewComposing = true;
+      refreshArticleSaveState();
+    });
+    elements.preview.addEventListener('compositionend', () => {
+      previewComposing = false;
+      capturePreviewEdits();
+      lastPreviewTyping = null;
+    });
     elements.preview.addEventListener("input", (event) => {
+      if (previewComposing || event.isComposing) return;
       const accordionTitle = event.target.closest?.("[data-accordion-title]");
       const accordionComponent = accordionTitle?.closest?.('[data-inserted-component="accordion"]');
       if (accordionComponent) {
@@ -10624,6 +10665,7 @@ ${bodyHtml}
       capturePreviewEdits({ typingTarget: /^(insertText|insertCompositionText|deleteContentBackward|deleteContentForward)$/.test(event.inputType || "") ? event.target : null });
     });
     elements.preview.addEventListener("keydown", (event) => {
+      if (previewComposing || event.isComposing || event.keyCode === 229) return;
       const caption = event.target.closest?.("figcaption, [data-image-caption]");
       const isolatedEditor = caption || event.target.closest?.("[data-code-content], [data-embed-text]");
       if (isolatedEditor && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
@@ -10664,6 +10706,7 @@ ${bodyHtml}
       if (event.inputType !== "insertParagraph" && event.inputType !== "insertLineBreak") {
         return;
       }
+      if (previewComposing || event.isComposing) return;
       event.preventDefault();
       if (!handleListEnter(event.inputType === "insertLineBreak")
         && !handleTextComponentEnter(event.inputType === "insertLineBreak")) insertPreviewLineBreak();
@@ -11908,6 +11951,7 @@ ${bodyHtml}
             <div class="field"><label for="tocTitle">タイトル</label><input id="tocTitle" type="text" value="目次" maxlength="40"></div>
             <div class="field"><label for="tocLineHeight">行間</label><input id="tocLineHeight" type="number" min="1.2" max="3" step="0.1" value="2.1"></div>
             <div class="field"><label class="check-item"><input id="tocBackLinks" type="checkbox">各見出しに「目次へ戻る」を表示</label></div>
+            <div class="field"><label class="check-item"><input id="tocHeadingNumbers" type="checkbox">各見出しに番号を付ける</label></div>
           </div>
         </div>`;
       linkCardPropertyBlock.after(tocPropertyBlock);
@@ -11915,7 +11959,8 @@ ${bodyHtml}
         preset: tocPropertyBlock.querySelector("#tocPreset"),
         title: tocPropertyBlock.querySelector("#tocTitle"),
         lineHeight: tocPropertyBlock.querySelector("#tocLineHeight"),
-        backLinks: tocPropertyBlock.querySelector("#tocBackLinks")
+        backLinks: tocPropertyBlock.querySelector("#tocBackLinks"),
+        headingNumbers: tocPropertyBlock.querySelector("#tocHeadingNumbers")
       };
       componentPage.appendChild(section);
       componentPage.appendChild(dialog);
@@ -12419,6 +12464,7 @@ ${bodyHtml}
           const tocList = component.querySelector("[data-toc-list]");
           tocControls.lineHeight.value = component.dataset.tocLineHeight || tocList?.style.lineHeight || "1.9";
           tocControls.backLinks.checked = component.dataset.tocBackLinks === "true";
+          tocControls.headingNumbers.checked = component.dataset.tocHeadingNumbers === "true";
         }
         if (componentType === "accordion") {
           const summary = component.querySelector(":scope > [data-accordion-summary]");
@@ -13765,6 +13811,7 @@ ${bodyHtml}
           component.dataset.tocTitle = tocControls.title.value.trim() || "目次";
           component.dataset.tocLineHeight = String(Math.max(1.2, Math.min(3, Number(tocControls.lineHeight.value) || 2.1)));
           component.dataset.tocBackLinks = String(tocControls.backLinks.checked);
+          component.dataset.tocHeadingNumbers = String(tocControls.headingNumbers.checked);
           normalizeTocDesign(component);
           syncTocBackLinks(elements.preview);
         }
@@ -14461,7 +14508,7 @@ ${bodyHtml}
         input.addEventListener("input", applyComponentSpecificSettings);
         input.addEventListener("change", applyComponentSpecificSettings);
       });
-      [tocControls.preset, tocControls.title, tocControls.lineHeight, tocControls.backLinks].forEach((input) => {
+      [tocControls.preset, tocControls.title, tocControls.lineHeight, tocControls.backLinks, tocControls.headingNumbers].forEach((input) => {
         input.classList.add("component-property-input");
         input.addEventListener("input", applyComponentSpecificSettings);
         input.addEventListener("change", applyComponentSpecificSettings);
@@ -14915,7 +14962,13 @@ ${bodyHtml}
           list.style.listStyleType = preset.listStyle;
           list.style.paddingLeft = preset.listPadding;
           list.style.lineHeight = String(lineHeight);
+          // Imported or formatted text may carry a fixed line-height which
+          // overrides the list's inherited setting. The TOC owns row spacing.
+          list.querySelectorAll("*").forEach((element) => {
+            element.style.lineHeight = "inherit";
+          });
           list.querySelectorAll("li").forEach((item) => {
+            item.style.lineHeight = String(lineHeight);
             item.style.margin = "2px 0";
             if (presetName === "numbered") item.style.fontWeight = "600";
             else item.style.fontWeight = "";
@@ -14936,6 +14989,17 @@ ${bodyHtml}
       const headings = Array.from(root.querySelectorAll(
         '[data-inserted-component="heading"] h2, [data-inserted-component="heading"] h3, [data-inserted-component="heading"] h4'
       ));
+      const numberHeadings = tocComponents.some((component) => component.dataset.tocHeadingNumbers === "true");
+      root.querySelectorAll('[data-toc-heading-number]').forEach((number) => number.remove());
+      if (numberHeadings) headings.forEach((heading, index) => {
+        const number = document.createElement('span');
+        number.dataset.tocHeadingNumber = 'true';
+        number.contentEditable = 'false';
+        number.textContent = `${index + 1}. `;
+        number.style.cssText = 'white-space:pre;flex:0 0 auto;';
+        const content = heading.querySelector(':scope > [data-heading-content]');
+        heading.insertBefore(number, content || heading.firstChild);
+      });
       const removeBackLink = (heading) => {
         heading.querySelectorAll(":scope > [data-toc-back-link]").forEach((link) => link.remove());
         if (heading.dataset.tocBackLayout !== "true") return;
@@ -15916,10 +15980,12 @@ ${bodyHtml}
         const dialog = document.querySelector('.component-property-dialog');
         if (dialog) dialog._targetComponent = null;
         formattedPreviewHtml = previewHistory[index];
+        const wasSavedState = formattedPreviewHtml === savedArticleHtml;
         render({ forceReset: true });
         // Rendering repairs editor markup. Keep that canonical state as the baseline
         // so later toggle/input events cannot create a spurious undo step.
         previewHistory[index] = getPersistablePreviewHtml();
+        if (wasSavedState) savedArticleHtml = previewHistory[index];
         document.querySelector('.inserted-component-properties')?._sync?.();
       } finally {
         restoringPreviewHistory = false;
@@ -15928,11 +15994,13 @@ ${bodyHtml}
       scheduleAutosave();
     }
     function performPreviewUndo() {
+      if (previewComposing) return;
       if (previewHistoryIndex <= 0) return;
       restorePreviewHistory(previewHistoryIndex - 1);
       setStatus("プレビューを元に戻しました");
     }
     function performPreviewRedo() {
+      if (previewComposing) return;
       if (previewHistoryIndex >= previewHistory.length - 1) return;
       restorePreviewHistory(previewHistoryIndex + 1);
       setStatus("プレビューをやり直しました");
@@ -15958,6 +16026,7 @@ ${bodyHtml}
     document.querySelector("#redoButton").addEventListener("click", performPreviewRedo);
     document.addEventListener("keydown", (event) => {
       if (!(event.ctrlKey || event.metaKey)) return;
+      if (previewComposing || event.isComposing || event.keyCode === 229) return;
       const key = event.key.toLowerCase();
       if (key !== "z" && key !== "y") return;
       const activeElement = document.activeElement;
@@ -16437,6 +16506,7 @@ ${bodyHtml}
     }
 
     elements.preview.addEventListener("beforeinput", (event) => {
+      if (previewComposing || event.isComposing) return;
       if (!event.inputType?.startsWith("delete")) return;
       if (deleteCrossCellTableSelection()) event.preventDefault();
     });
@@ -17086,9 +17156,12 @@ ${bodyHtml}
     );
 
     async function writeArticleFile(handle) {
+      const blob = createArticlePayloadBlob();
+      const snapshot = JSON.parse(await blob.text()).articleHtml;
       const writable = await handle.createWritable();
-      await writable.write(createArticlePayloadBlob());
+      await writable.write(blob);
       await writable.close();
+      markArticleSaved(snapshot, true);
     }
 
     updateActiveArticleFile();
@@ -17123,6 +17196,8 @@ ${bodyHtml}
           return;
         } catch (error) {
           if (error?.name === "AbortError") return;
+          setStatus("保存できませんでした。未保存の変更は残っています");
+          return;
         }
       }
       const url = URL.createObjectURL(blob);
@@ -17136,6 +17211,7 @@ ${bodyHtml}
         URL.revokeObjectURL(url);
       }, 1000);
       setStatus("名前を付けて保存しました");
+      markArticleSaved(JSON.parse(await blob.text()).articleHtml, true);
     });
 
     function updateCustomFeatureAvailability() {
@@ -17328,6 +17404,7 @@ ${bodyHtml}
         imagesAuto: document.querySelector("#markdownImagesAuto")?.checked === true,
         clearPreview: document.querySelector("#markdownClearPreview")?.checked === true
       };
+      if (importOptions.clearPreview && !confirmUnsavedArticle()) return;
       markdownImportConfirmButton.disabled = true;
       try {
         if (mode === "paste") {
@@ -17616,6 +17693,7 @@ ${bodyHtml}
     document.querySelector("#htmlImportCancelButton")?.addEventListener("click", () => htmlImportDialog?.close());
     htmlImportConfirmButton?.addEventListener("click", async () => {
       const mode = syncHtmlImportMode();
+      if (!confirmUnsavedArticle()) return;
       htmlImportConfirmButton.disabled = true;
       try {
         if (mode === "paste") {
@@ -17671,11 +17749,13 @@ ${bodyHtml}
         path: articleFileDisplayPath(file, handle),
         writable: isFullSave && !!handle
       });
+      if (isFullSave) markArticleSaved();
       setStatus(isFullSave ? "記事JSONを読み込みました" : "JSONを読み込みました（記事データなし）");
     };
 
     const jsonFileInput = document.querySelector("#jsonFileInput");
     document.querySelector("#importJsonButton").addEventListener("click", async () => {
+      if (!confirmUnsavedArticle()) return;
       if (typeof window.showOpenFilePicker === "function") {
         try {
           const [handle] = await window.showOpenFilePicker({
@@ -17909,6 +17989,7 @@ ${bodyHtml}
       updateBodyFlagPosition();
       render();
       setStatus("新しい記事を作成しました");
+      markArticleSaved();
     });
 
     (function setupPanelResizer() {
@@ -18604,6 +18685,7 @@ ${bodyHtml}
     }
 
     setupPreviewToolbarSections();
+    markArticleSaved();
 
   </script>
 </body>

@@ -34,6 +34,81 @@ class EditorTests(unittest.TestCase):
     def test_startup(self):
         self.assertGreater(self.page.evaluate("elements.preview.children.length"), 0)
 
+    def test_ime_confirmation_does_not_insert_newline_and_undo_is_atomic(self):
+        result = self.page.evaluate("""() => {
+            elements.preview.innerHTML = '<p>start</p>'; capturePreviewEdits();
+            const p = elements.preview.querySelector('p');
+            p.dispatchEvent(new CompositionEvent('compositionstart', {bubbles:true}));
+            for (const text of ['に', 'にほん', '日本']) {
+              p.textContent = 'start' + text;
+              p.dispatchEvent(new InputEvent('input', {bubbles:true, isComposing:true, inputType:'insertCompositionText'}));
+            }
+            const enter = new KeyboardEvent('keydown', {key:'Enter', isComposing:true, bubbles:true, cancelable:true});
+            p.dispatchEvent(enter);
+            p.dispatchEvent(new CompositionEvent('compositionend', {bubbles:true, data:'日本'}));
+            performPreviewUndo();
+            const undone = elements.preview.textContent;
+            performPreviewRedo();
+            return {prevented:enter.defaultPrevented, undone, redone:elements.preview.textContent};
+        }""")
+        self.assertEqual(result, {'prevented': False, 'undone': 'start', 'redone': 'start日本'})
+
+    def test_unsaved_state_save_failure_success_and_cancel_open(self):
+        result = self.page.evaluate("""async () => {
+            elements.preview.innerHTML = '<p>saved</p>'; capturePreviewEdits(); markArticleSaved();
+            elements.preview.innerHTML = '<p>changed</p>'; capturePreviewEdits();
+            const dirty = articleHasUnsavedChanges();
+            window.confirm = () => false;
+            let opened = false;
+            window.showOpenFilePicker = async () => { opened = true; return []; };
+            document.querySelector('#importJsonButton').click();
+            await Promise.resolve();
+            const close = new Event('beforeunload', {cancelable:true});
+            window.dispatchEvent(close);
+            try { await writeArticleFile({createWritable:async () => {throw new Error('denied');}}); } catch {}
+            const afterFailure = articleHasUnsavedChanges();
+            await writeArticleFile({createWritable:async () => ({write:async () => {},close:async () => {}})});
+            const afterSuccess = articleHasUnsavedChanges();
+            performPreviewUndo();
+            const afterUndo = articleHasUnsavedChanges();
+            performPreviewRedo();
+            return {dirty, opened, closePrevented:close.defaultPrevented, afterFailure, afterSuccess, afterUndo, afterRedo:articleHasUnsavedChanges()};
+        }""")
+        self.assertEqual(result, dict(dirty=True, opened=False, closePrevented=True,
+                                     afterFailure=True, afterSuccess=False, afterUndo=True, afterRedo=False))
+
+    def test_all_parts_json_and_html_round_trip(self):
+        types = ['list', 'note', 'quote', 'qa', 'table', 'image', 'imageText', 'imagePair',
+                 'beforeAfter', 'code', 'rule', 'xpost', 'video', 'accordion', 'linkCard', 'toc']
+        result = self.page.evaluate("""async types => {
+            window.twttr = {widgets:{load:() => {}}};
+            const results = [];
+            for (const type of types) {
+              const holder = document.createElement('div');
+              holder.innerHTML = insertedComponentHtml(type);
+              const component = holder.firstElementChild;
+              if (type === 'xpost') component.dataset.embedUrl = 'https://x.com/test/status/123';
+              if (type === 'video') component.dataset.embedUrl = 'https://youtu.be/abcdefghijk';
+              elements.preview.replaceChildren(component);
+              capturePreviewEdits();
+              const payload = JSON.parse(await createArticlePayloadBlob().text());
+              applyArticlePayload(payload);
+              const jsonPart = elements.preview.querySelector(`[data-inserted-component="${type}"]`);
+              const jsonText = jsonPart?.textContent;
+              const exported = formatOutputHtml(getPersistablePreviewHtml());
+              importArticleHtml(exported);
+              const htmlPart = elements.preview.querySelector(`[data-inserted-component="${type}"]`);
+              results.push({type, json:!!jsonPart, html:!!htmlPart,
+                textKept: ['xpost','video','toc'].includes(type) || htmlPart?.textContent.replace(/\s/g, '') === jsonText?.replace(/\s/g, '')});
+            }
+            return results;
+        }""", types)
+        for entry in result:
+            with self.subTest(part=entry['type']):
+                self.assertTrue(entry['json'])
+                self.assertTrue(entry['html'])
+                self.assertTrue(entry['textKept'])
+
     def test_only_desktop_controls_use_an_independent_scroll_pane(self):
         self.page.set_viewport_size({"width": 1280, "height": 720})
         before = self.page.evaluate("""() => {
@@ -242,6 +317,7 @@ class EditorTests(unittest.TestCase):
               + '<img src="javascript:alert(1)" onerror="window.__unsafeImport = true">';
         }""")
         self.page.evaluate("""html => {
+            window.confirm = () => true;
             document.querySelector('#importHtmlButton').click();
             const pasteMode = document.querySelector('input[name="htmlImportMode"][value="paste"]');
             pasteMode.checked = true;
@@ -661,6 +737,47 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["disabledDisplay"], "")
         self.assertEqual(result["afterTocRemoval"], 0)
 
+    def test_toc_heading_numbers_toggle_reorder_and_html_round_trip(self):
+        result = self.page.evaluate("""() => {
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedComponentHtml('toc');
+            const toc = holder.firstElementChild;
+            const headings = ['Alpha', 'Beta'].map(text => {
+              const fragment = document.createDocumentFragment();
+              fragment.append(text);
+              return createDocumentBlockFromFragment('heading', fragment, readDocumentBlockSettings('heading'));
+            });
+            elements.preview.replaceChildren(toc, ...headings);
+            activeInsertedComponent = toc;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const flag = document.querySelector('#tocHeadingNumbers');
+            const initial = flag.checked;
+            flag.checked = true;
+            flag.dispatchEvent(new Event('change', {bubbles:true}));
+            const numbers = () => [...elements.preview.querySelectorAll('[data-toc-heading-number]')].map(el => el.textContent);
+            const enabled = numbers();
+            elements.preview.insertBefore(headings[1], headings[0]);
+            capturePreviewEdits();
+            const reorderedFirst = elements.preview.querySelector('[data-inserted-component="heading"]').textContent;
+            const html = formatOutputHtml(getPersistablePreviewHtml());
+            importArticleHtml(html);
+            const restored = numbers();
+            const restoredToc = elements.preview.querySelector('[data-inserted-component="toc"]');
+            activeInsertedComponent = restoredToc;
+            properties._sync();
+            flag.checked = false;
+            flag.dispatchEvent(new Event('change', {bubbles:true}));
+            return {initial, enabled, reorderedFirst, restored, disabled: numbers(),
+              titles: [...elements.preview.querySelectorAll('[data-heading-content]')].map(el => el.textContent.trim())};
+        }""")
+        self.assertFalse(result['initial'])
+        self.assertEqual(result['enabled'], ['1. ', '2. '])
+        self.assertIn('1. Beta', result['reorderedFirst'])
+        self.assertEqual(result['restored'], ['1. ', '2. '])
+        self.assertEqual(result['disabled'], [])
+        self.assertEqual(result['titles'], ['Beta', 'Alpha'])
+
     def test_toc_line_height_is_roomier_and_adjustable(self):
         result = self.page.evaluate("""() => {
             const holder = document.createElement('div');
@@ -704,6 +821,29 @@ class EditorTests(unittest.TestCase):
         self.assertIn('data-toc-line-height="2.4"', result["adjusted"]["savedHtml"])
         self.assertEqual(result["legacyDataset"], "1.9")
         self.assertEqual(result["legacyStyle"], "1.9")
+
+    def test_toc_spacing_changes_visible_rows_with_imported_text_styles(self):
+        result = self.page.evaluate("""() => {
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedComponentHtml('toc');
+            const toc = holder.firstElementChild;
+            const list = toc.querySelector('[data-toc-list]');
+            list.innerHTML = '<li style="line-height:20px"><a href="#one"><span style="line-height:20px">First</span></a></li><li style="line-height:20px"><a href="#two">Second</a></li>';
+            elements.preview.replaceChildren(toc);
+            activeInsertedComponent = toc;
+            document.querySelector('.inserted-component-properties')._sync();
+            const input = document.querySelector('#tocLineHeight');
+            const measure = value => {
+              input.value = value;
+              input.dispatchEvent(new Event('input', {bubbles:true}));
+              const items = list.querySelectorAll('li');
+              return items[1].getBoundingClientRect().top - items[0].getBoundingClientRect().top;
+            };
+            const small = measure('1.2');
+            const large = measure('3');
+            return {small, large};
+        }""")
+        self.assertGreater(result['large'], result['small'] + 15)
 
     def test_obfuscated_script_url_is_removed(self):
         result = self.page.evaluate("""() => {
