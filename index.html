@@ -7176,7 +7176,7 @@ ${bodyHtml}
         activePreviewTable = elements.preview.querySelectorAll("table")[activeTableIndex] || null;
       }
       formattedPreviewHtml = getPersistablePreviewHtml();
-      if (!previewHistory.length) {
+      if (!restoringPreviewHistory) {
         recordPreviewState(formattedPreviewHtml);
       }
       elements.code.textContent = formatOutputHtml(formattedPreviewHtml);
@@ -7327,7 +7327,7 @@ ${bodyHtml}
       counter.setAttribute("aria-label", `プレビューの文字数 ${count}文字`);
     }
 
-    function capturePreviewEdits() {
+    function capturePreviewEdits(historyOptions = {}) {
       const componentProperties = document.querySelector(".inserted-component-properties");
       normalizeEmbeddedSideContent(elements.preview);
       syncEditableMediaTexts();
@@ -7337,7 +7337,7 @@ ${bodyHtml}
       formattedPreviewHtml = getPersistablePreviewHtml();
       previewIsCleared = formattedPreviewHtml === "";
       elements.code.textContent = formatOutputHtml(formattedPreviewHtml);
-      recordPreviewState(formattedPreviewHtml);
+      recordPreviewState(formattedPreviewHtml, historyOptions);
       updateComponentDeleteButtons();
       updateCharacterCount();
       scheduleAutosave();
@@ -7649,6 +7649,8 @@ ${bodyHtml}
     let copiedComponentType = "";
     let previewHistory = [];
     let previewHistoryIndex = -1;
+    let restoringPreviewHistory = false;
+    let lastPreviewTyping = null;
     let previewSearchState = { query: "", matches: [], index: -1 };
     let documentBlockModeReady = false;
     let documentPropertyScope = "selected";
@@ -8715,25 +8717,35 @@ ${bodyHtml}
       if (redoButton) redoButton.disabled = previewHistoryIndex < 0 || previewHistoryIndex >= previewHistory.length - 1;
     }
 
-    function recordPreviewState(html) {
+    function recordPreviewState(html, { typingTarget = null } = {}) {
+      if (restoringPreviewHistory) return;
+      const now = Date.now();
       if (previewHistory[previewHistoryIndex] === html) {
         updateHistoryButtons();
         return;
       }
+      const mergeTyping = typingTarget && lastPreviewTyping?.target === typingTarget
+        && now - lastPreviewTyping.time < 800 && previewHistoryIndex === previewHistory.length - 1;
       previewHistory = previewHistory.slice(0, previewHistoryIndex + 1);
-      previewHistory.push(html);
+      if (mergeTyping) previewHistory[previewHistoryIndex] = html;
+      else previewHistory.push(html);
+      lastPreviewTyping = typingTarget ? { target: typingTarget, time: now } : null;
       if (previewHistory.length > 50) previewHistory.shift();
       previewHistoryIndex = previewHistory.length - 1;
       updateHistoryButtons();
     }
 
-    function resetFormattedPreview() {
+    function resetFormattedPreview({ clearHistory = false } = {}) {
+      if (!clearHistory && previewHistory.length) capturePreviewEdits();
       formattedPreviewHtml = "";
       previewIsCleared = false;
       savedPreviewRange = null;
       selectedTableCells = [];
-      previewHistory = [];
-      previewHistoryIndex = -1;
+      if (clearHistory) {
+        previewHistory = [];
+        previewHistoryIndex = -1;
+      }
+      lastPreviewTyping = null;
       updateHistoryButtons();
     }
 
@@ -10609,7 +10621,7 @@ ${bodyHtml}
         const input = document.querySelector("#videoBottomText");
         if (input && getSelectedComponent() === videoComponent) input.value = videoComponent.dataset.videoBottomText;
       }
-      capturePreviewEdits();
+      capturePreviewEdits({ typingTarget: /^(insertText|insertCompositionText|deleteContentBackward|deleteContentForward)$/.test(event.inputType || "") ? event.target : null });
     });
     elements.preview.addEventListener("keydown", (event) => {
       const caption = event.target.closest?.("figcaption, [data-image-caption]");
@@ -15892,22 +15904,37 @@ ${bodyHtml}
     });
     document.querySelector("#previewComponentDeleteButton").addEventListener("click", deleteSelectedComponent);
     document.querySelector("#documentComponentDeleteButton").addEventListener("click", deleteSelectedComponent);
-    function performPreviewUndo() {
-      if (previewHistoryIndex <= 0) return;
-      previewHistoryIndex -= 1;
-      formattedPreviewHtml = previewHistory[previewHistoryIndex];
-      render({ forceReset: true });
+    function restorePreviewHistory(index) {
+      lastPreviewTyping = null;
+      restoringPreviewHistory = true;
+      try {
+        previewHistoryIndex = index;
+        activeInsertedComponent = null;
+        activePreviewTable = null;
+        savedPreviewRange = null;
+        selectedTableCells = [];
+        const dialog = document.querySelector('.component-property-dialog');
+        if (dialog) dialog._targetComponent = null;
+        formattedPreviewHtml = previewHistory[index];
+        render({ forceReset: true });
+        // Rendering repairs editor markup. Keep that canonical state as the baseline
+        // so later toggle/input events cannot create a spurious undo step.
+        previewHistory[index] = getPersistablePreviewHtml();
+        document.querySelector('.inserted-component-properties')?._sync?.();
+      } finally {
+        restoringPreviewHistory = false;
+      }
       updateHistoryButtons();
       scheduleAutosave();
+    }
+    function performPreviewUndo() {
+      if (previewHistoryIndex <= 0) return;
+      restorePreviewHistory(previewHistoryIndex - 1);
       setStatus("プレビューを元に戻しました");
     }
     function performPreviewRedo() {
       if (previewHistoryIndex >= previewHistory.length - 1) return;
-      previewHistoryIndex += 1;
-      formattedPreviewHtml = previewHistory[previewHistoryIndex];
-      render({ forceReset: true });
-      updateHistoryButtons();
-      scheduleAutosave();
+      restorePreviewHistory(previewHistoryIndex + 1);
       setStatus("プレビューをやり直しました");
     }
     function clearPreview() {
@@ -17774,7 +17801,7 @@ ${bodyHtml}
 
     document.querySelector("#resetButton").addEventListener("click", () => {
       updateActiveArticleFile();
-      resetFormattedPreview();
+      resetFormattedPreview({ clearHistory: true });
       elements.preset.value = defaults.preset;
       elements.blockType.value = defaults.blockType;
       elements.listMarker.value = defaults.listMarker;

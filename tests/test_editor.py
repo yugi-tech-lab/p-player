@@ -109,6 +109,53 @@ class EditorTests(unittest.TestCase):
         self.page.evaluate("performPreviewRedo()")
         self.page.wait_for_function("JSON.parse(localStorage.getItem(AUTOSAVE_STORAGE_KEY)).previewHtml.includes('second')", timeout=6000)
 
+    def test_rendered_changes_are_undoable_and_redo_survives_capture(self):
+        result = self.page.evaluate("""() => {
+            elements.preview.innerHTML = '<p>before</p>'; capturePreviewEdits();
+            formattedPreviewHtml = '<p>after</p>';
+            render({forceReset:true});
+            performPreviewUndo();
+            const undone = elements.preview.textContent;
+            capturePreviewEdits();
+            const canRedo = !document.querySelector('#redoButton').disabled;
+            performPreviewRedo();
+            return {undone, canRedo, redone:elements.preview.textContent};
+        }""")
+        self.assertEqual(result, {"undone": "before", "canRedo": True, "redone": "after"})
+
+    def test_continuous_typing_uses_one_undo_step(self):
+        result = self.page.evaluate("""() => {
+            elements.preview.innerHTML = '<p>before</p>'; capturePreviewEdits();
+            const beforeCount = previewHistory.length;
+            const paragraph = elements.preview.querySelector('p');
+            for (let i = 0; i < 70; i++) {
+              paragraph.append('a');
+              paragraph.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:'a'}));
+            }
+            const added = previewHistory.length - beforeCount;
+            performPreviewUndo();
+            const undone = elements.preview.textContent;
+            performPreviewRedo();
+            return {added, undone, redone:elements.preview.textContent};
+        }""")
+        self.assertEqual(result['added'], 1)
+        self.assertEqual(result['undone'], 'before')
+        self.assertEqual(result['redone'], 'before' + 'a' * 70)
+
+    def test_design_reset_does_not_discard_undo_history(self):
+        result = self.page.evaluate("""() => {
+            elements.preview.innerHTML = '<p>keep this article</p>'; capturePreviewEdits();
+            resetFormattedPreview();
+            render();
+            const changed = elements.preview.textContent;
+            performPreviewUndo();
+            const undone = elements.preview.textContent;
+            performPreviewRedo();
+            return {changed, undone, redone:elements.preview.textContent};
+        }""")
+        self.assertEqual(result['undone'], 'keep this article')
+        self.assertEqual(result['redone'], result['changed'])
+
     def test_restore_can_be_undone_and_redone(self):
         result = self.page.evaluate("""() => {
             elements.preview.innerHTML = '<p>original</p>'; capturePreviewEdits();
