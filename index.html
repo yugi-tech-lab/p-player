@@ -1565,7 +1565,8 @@
     }
 
     #autosaveHistoryButton,
-    #importMarkdownButton {
+    #importMarkdownButton,
+    #importHtmlButton {
       font-size: 0.8rem;
       min-height: 24px;
       padding: 2px 7px;
@@ -3119,7 +3120,8 @@
       white-space: nowrap;
     }
 
-    #markdownPasteText {
+    #markdownPasteText,
+    #htmlPasteText {
       width: 100%;
       min-height: 260px;
       resize: vertical;
@@ -4200,6 +4202,7 @@
     }
 
     #tableCsvOpenButton,
+    #importHtmlButton,
     #importMarkdownButton,
     #importLayoutButton,
     #importJsonButton {
@@ -4209,6 +4212,7 @@
     }
 
     #tableCsvOpenButton:hover,
+    #importHtmlButton:hover,
     #importMarkdownButton:hover,
     #importLayoutButton:hover,
     #importJsonButton:hover {
@@ -5612,6 +5616,39 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
                   <div class="markdown-import-dialog-actions">
                     <button class="secondary" id="markdownImportCancelButton" type="button">キャンセル</button>
                     <button class="primary" id="markdownImportConfirmButton" type="button">OK</button>
+                  </div>
+                </div>
+              </dialog>
+              <button class="secondary" id="importHtmlButton" type="button" title="出力済みHTMLを再編集用に読み込む">HTMLを開く</button>
+              <input id="htmlFileInput" type="file" accept=".html,.htm,text/html" hidden>
+              <dialog class="markdown-import-dialog" id="htmlImportDialog">
+                <div class="markdown-import-dialog-content">
+                  <h3>HTMLを開く</h3>
+                  <p class="page-note">現在のプレビューを置き換えます。公開用HTMLから復元できない編集情報は、可能な範囲で補完します。</p>
+                  <div class="markdown-import-mode" role="radiogroup" aria-label="HTMLの入力方法">
+                    <label>
+                      <input type="radio" name="htmlImportMode" value="file" checked>
+                      <span>ファイルを選択</span>
+                    </label>
+                    <label>
+                      <input type="radio" name="htmlImportMode" value="paste">
+                      <span>HTMLを貼り付け</span>
+                    </label>
+                  </div>
+                  <div class="markdown-import-panel" id="htmlFilePanel">
+                    <label>HTMLファイル</label>
+                    <div class="markdown-import-file-row">
+                      <button class="secondary" id="htmlChooseFileButton" type="button">ファイルを選択</button>
+                      <span class="markdown-import-file-name" id="htmlSelectedFileName">選択されていません</span>
+                    </div>
+                  </div>
+                  <div class="markdown-import-panel" id="htmlPastePanel" hidden>
+                    <label for="htmlPasteText">HTMLコード</label>
+                    <textarea id="htmlPasteText" placeholder="P-Playerで出力したHTMLを貼り付けてください"></textarea>
+                  </div>
+                  <div class="markdown-import-dialog-actions">
+                    <button class="secondary" id="htmlImportCancelButton" type="button">キャンセル</button>
+                    <button class="primary" id="htmlImportConfirmButton" type="button">読み込む</button>
                   </div>
                 </div>
               </dialog>
@@ -11588,9 +11625,10 @@ ${bodyHtml}
       notePropertyBlock.innerHTML = `<label>メモ・注意</label>
         <div class="list-settings-group"><strong>デザイン</strong>
           <div class="row">
-            <div class="field"><label for="notePreset">スタイル</label><select id="notePreset"><option value="memo">メモ</option><option value="tip">ポイント</option><option value="warning">注意</option><option value="success">成功</option><option value="danger">重要</option><option value="custom" selected>カスタム</option></select></div>
+            <div class="field"><label for="notePreset">スタイル</label><select id="notePreset"><option value="memo">メモ</option><option value="tip">ポイント</option><option value="warning">注意</option><option value="spotMemo">スポットメモ</option><option value="spotWarning">スポット注意</option><option value="success">成功</option><option value="danger">重要</option><option value="custom" selected>カスタム</option></select></div>
             <div class="field"><label for="noteIcon">アイコン</label><select id="noteIcon"><option value="none">なし</option><option value="📝">📝</option><option value="💡">💡</option><option value="📌">📌</option><option value="⚠️">⚠️</option><option value="✅">✅</option><option value="❗">❗</option><option value="🔧">🔧</option></select></div>
             <div class="field"><label for="noteFrameStyle">枠の付け方</label><select id="noteFrameStyle"><option value="left">左ライン</option><option value="full">全体</option><option value="dashed">破線</option><option value="none">なし</option></select></div>
+            <div class="field"><label for="noteWidthMode">幅</label><select id="noteWidthMode"><option value="block">横幅いっぱい</option><option value="spot">内容に合わせる（スポット）</option></select></div>
           </div>
           <div class="row">
             <div class="field"><label for="noteAccentColor">アクセント色</label><div class="color-row"><input id="noteAccentColor" type="color" value="#0f8b8d"><input id="noteAccentColorText" type="text" value="#0f8b8d"></div></div>
@@ -11608,7 +11646,7 @@ ${bodyHtml}
         </div>`;
       comparePropertyBlock.after(notePropertyBlock);
       const noteControls = {
-        preset: notePropertyBlock.querySelector("#notePreset"), icon: notePropertyBlock.querySelector("#noteIcon"), frame: notePropertyBlock.querySelector("#noteFrameStyle"),
+        preset: notePropertyBlock.querySelector("#notePreset"), icon: notePropertyBlock.querySelector("#noteIcon"), frame: notePropertyBlock.querySelector("#noteFrameStyle"), layout: notePropertyBlock.querySelector("#noteWidthMode"),
         accent: notePropertyBlock.querySelector("#noteAccentColor"), accentText: notePropertyBlock.querySelector("#noteAccentColorText"),
         background: notePropertyBlock.querySelector("#noteBackgroundColor"), backgroundText: notePropertyBlock.querySelector("#noteBackgroundColorText"),
         border: notePropertyBlock.querySelector("#noteBorderColor"), borderText: notePropertyBlock.querySelector("#noteBorderColorText"),
@@ -11856,6 +11894,7 @@ ${bodyHtml}
           <div class="row">
             <div class="field"><label for="tocPreset">スタイル</label><select id="tocPreset"><option value="simple">シンプル</option><option value="accent">アクセントライン</option><option value="header">カラーヘッダー</option><option value="numbered">番号強調</option><option value="dark">ダーク</option><option value="minimal">ミニマル</option></select></div>
             <div class="field"><label for="tocTitle">タイトル</label><input id="tocTitle" type="text" value="目次" maxlength="40"></div>
+            <div class="field"><label for="tocLineHeight">行間</label><input id="tocLineHeight" type="number" min="1.2" max="3" step="0.1" value="2.1"></div>
             <div class="field"><label class="check-item"><input id="tocBackLinks" type="checkbox">各見出しに「目次へ戻る」を表示</label></div>
           </div>
         </div>`;
@@ -11863,6 +11902,7 @@ ${bodyHtml}
       const tocControls = {
         preset: tocPropertyBlock.querySelector("#tocPreset"),
         title: tocPropertyBlock.querySelector("#tocTitle"),
+        lineHeight: tocPropertyBlock.querySelector("#tocLineHeight"),
         backLinks: tocPropertyBlock.querySelector("#tocBackLinks")
       };
       componentPage.appendChild(section);
@@ -12275,6 +12315,7 @@ ${bodyHtml}
           noteControls.preset.value = component.dataset.notePreset || "custom";
           noteControls.icon.value = component.dataset.noteIcon || "none";
           noteControls.frame.value = component.dataset.noteFrame || (component.style.borderLeftWidth && component.style.borderLeftWidth !== "0px" ? "left" : "none");
+          noteControls.layout.value = component.dataset.noteLayout || (component.style.display === "inline-block" ? "spot" : "block");
           setColorControl(noteControls.accent, noteControls.accentText, component.dataset.noteAccent || component.style.borderLeftColor || "#0f8b8d");
           setColorControl(noteControls.background, noteControls.backgroundText, component.dataset.noteBackground || component.style.backgroundColor || "#eef8f8");
           setColorControl(noteControls.border, noteControls.borderText, component.dataset.noteBorder || component.style.borderColor || "#0f8b8d");
@@ -12363,6 +12404,8 @@ ${bodyHtml}
           tocControls.preset.value = ["simple", "accent", "header", "numbered", "dark", "minimal"].includes(component.dataset.tocPreset)
             ? component.dataset.tocPreset : "simple";
           tocControls.title.value = component.dataset.tocTitle || component.querySelector("[data-toc-title]")?.textContent || "目次";
+          const tocList = component.querySelector("[data-toc-list]");
+          tocControls.lineHeight.value = component.dataset.tocLineHeight || tocList?.style.lineHeight || "1.9";
           tocControls.backLinks.checked = component.dataset.tocBackLinks === "true";
         }
         if (componentType === "accordion") {
@@ -13184,6 +13227,13 @@ ${bodyHtml}
         component.style.borderRadius = `${radius}px`;
         component.style.padding = `${padding}px`;
         component.style.boxShadow = componentShadow(noteControls.shadow.value);
+        const spotLayout = noteControls.layout.value === "spot";
+        component.style.display = spotLayout ? "inline-block" : "block";
+        component.style.width = spotLayout ? "fit-content" : "auto";
+        component.style.maxWidth = "100%";
+        component.style.boxSizing = "border-box";
+        component.style.verticalAlign = spotLayout ? "middle" : "";
+        component.style.margin = spotLayout ? "6px 6px 6px 0" : "14px 0";
         component.style.overflowWrap = "anywhere";
         component.style.wordBreak = "break-word";
         let icon = component.querySelector(":scope > [data-note-icon]");
@@ -13205,6 +13255,7 @@ ${bodyHtml}
         component.dataset.notePreset = noteControls.preset.value;
         component.dataset.noteIcon = noteControls.icon.value;
         component.dataset.noteFrame = noteControls.frame.value;
+        component.dataset.noteLayout = spotLayout ? "spot" : "block";
         component.dataset.noteAccent = accent;
         component.dataset.noteBackground = background;
         component.dataset.noteBorder = border;
@@ -13700,6 +13751,7 @@ ${bodyHtml}
           component.dataset.tocPreset = ["simple", "accent", "header", "numbered", "dark", "minimal"].includes(tocControls.preset.value)
             ? tocControls.preset.value : "simple";
           component.dataset.tocTitle = tocControls.title.value.trim() || "目次";
+          component.dataset.tocLineHeight = String(Math.max(1.2, Math.min(3, Number(tocControls.lineHeight.value) || 2.1)));
           component.dataset.tocBackLinks = String(tocControls.backLinks.checked);
           normalizeTocDesign(component);
           syncTocBackLinks(elements.preview);
@@ -14251,11 +14303,13 @@ ${bodyHtml}
         setStatus("Before / Afterを入れ替えました");
       });
       const notePresets = {
-        memo: { icon: "📝", frame: "left", accent: "#0f8b8d", background: "#eef8f8", border: "#0f8b8d", width: "5", radius: "8", padding: "12", shadow: "none" },
-        tip: { icon: "💡", frame: "left", accent: "#ca8a04", background: "#fefce8", border: "#facc15", width: "5", radius: "8", padding: "12", shadow: "none" },
-        warning: { icon: "⚠️", frame: "full", accent: "#d97706", background: "#fff7ed", border: "#f59e0b", width: "2", radius: "8", padding: "14", shadow: "soft" },
-        success: { icon: "✅", frame: "left", accent: "#16a34a", background: "#f0fdf4", border: "#86efac", width: "5", radius: "8", padding: "12", shadow: "none" },
-        danger: { icon: "❗", frame: "full", accent: "#dc2626", background: "#fef2f2", border: "#f87171", width: "2", radius: "6", padding: "14", shadow: "soft" }
+        memo: { icon: "📝", frame: "left", layout: "block", accent: "#0f8b8d", background: "#eef8f8", border: "#0f8b8d", width: "5", radius: "8", padding: "12", shadow: "none" },
+        tip: { icon: "💡", frame: "left", layout: "block", accent: "#ca8a04", background: "#fefce8", border: "#facc15", width: "5", radius: "8", padding: "12", shadow: "none" },
+        warning: { icon: "⚠️", frame: "full", layout: "block", accent: "#d97706", background: "#fff7ed", border: "#f59e0b", width: "2", radius: "8", padding: "14", shadow: "soft" },
+        spotMemo: { icon: "📌", frame: "full", layout: "spot", accent: "#0f8b8d", background: "#eef8f8", border: "#7dd3d5", width: "1", radius: "40", padding: "7", shadow: "none" },
+        spotWarning: { icon: "⚠️", frame: "full", layout: "spot", accent: "#d97706", background: "#fff7ed", border: "#fdba74", width: "1", radius: "40", padding: "7", shadow: "none" },
+        success: { icon: "✅", frame: "left", layout: "block", accent: "#16a34a", background: "#f0fdf4", border: "#86efac", width: "5", radius: "8", padding: "12", shadow: "none" },
+        danger: { icon: "❗", frame: "full", layout: "block", accent: "#dc2626", background: "#fef2f2", border: "#f87171", width: "2", radius: "6", padding: "14", shadow: "soft" }
       };
       const quotePresets = {
         standard: { line: "left", mark: false, accent: "#64748b", background: "#f4f6f8", border: "#cbd5e1", width: "5", radius: "0", padding: "12", markSize: "42", shadow: "none" },
@@ -14273,6 +14327,7 @@ ${bodyHtml}
         if (!preset) return;
         noteControls.icon.value = preset.icon;
         noteControls.frame.value = preset.frame;
+        noteControls.layout.value = preset.layout;
         setComponentColorPair(noteControls.accent, noteControls.accentText, preset.accent);
         setComponentColorPair(noteControls.background, noteControls.backgroundText, preset.background);
         setComponentColorPair(noteControls.border, noteControls.borderText, preset.border);
@@ -14394,7 +14449,7 @@ ${bodyHtml}
         input.addEventListener("input", applyComponentSpecificSettings);
         input.addEventListener("change", applyComponentSpecificSettings);
       });
-      [tocControls.preset, tocControls.title, tocControls.backLinks].forEach((input) => {
+      [tocControls.preset, tocControls.title, tocControls.lineHeight, tocControls.backLinks].forEach((input) => {
         input.classList.add("component-property-input");
         input.addEventListener("input", applyComponentSpecificSettings);
         input.addEventListener("change", applyComponentSpecificSettings);
@@ -14502,12 +14557,12 @@ ${bodyHtml}
         video: `<div data-inserted-component="video" data-embed-url="" data-video-bottom-text="" data-video-bottom-html="" contenteditable="false" style="margin:14px 0;"><div data-embed-slot="true">${embedPlaceholderHtml("▶️", "動画のURL（YouTube・Vimeoなど）を設定してください")}</div></div>`,
         accordion: `<details data-inserted-component="accordion" data-accordion-preset="simple" data-accordion-icon="chevron" data-accordion-initially-open="false" data-accordion-summary-background="#f8fafc" data-accordion-content-background="#ffffff" data-accordion-border="#cbd5e1" data-accordion-accent="#2563eb" data-accordion-text-color="#172033" data-accordion-radius="8" data-accordion-padding="14" contenteditable="false" style="margin:14px 0;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;overflow:hidden;"><summary data-accordion-summary contenteditable="true" style="display:list-item;padding:14px;background:#f8fafc;color:#2563eb;font-weight:700;cursor:pointer;list-style-position:inside;"><span data-accordion-icon contenteditable="false" aria-hidden="true" style="display:none;"></span><span data-accordion-title contenteditable="true" style="margin-left:8px;color:#172033;">詳しい内容を見る</span></summary><div data-accordion-content contenteditable="true" style="padding:14px;color:#172033;line-height:1.8;background:#ffffff;border-top:1px solid #cbd5e1;">ここに折りたたむ内容を入力します。</div></details>`,
         linkCard: `<div data-inserted-component="linkCard" data-link-card-preset="standard" data-link-card-url="https://example.com" data-link-card-image-url="" data-link-card-show-image="false" data-link-card-new-tab="true" data-link-card-button-label="リンクを開く" data-link-card-accent="#2563eb" data-link-card-background="#ffffff" data-link-card-border="#cbd5e1" data-link-card-text-color="#172033" data-link-card-radius="10" data-link-card-width="66.7" data-link-card-height="94" contenteditable="false" style="width:66.7%;max-width:100%;box-sizing:border-box;margin:9px 0;"><a data-link-card-anchor href="https://example.com" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:stretch;gap:0;height:94px;box-sizing:border-box;color:#172033;text-decoration:none;border:1px solid #cbd5e1;border-radius:10px;background:#ffffff;overflow:hidden;"><span data-link-card-image-wrap contenteditable="false" style="display:none;flex:0 0 34%;height:100%;max-width:220px;background:#f1f5f9;"><img data-link-card-image alt="" style="display:block;width:100%;height:100%;min-height:0;max-height:100%;object-fit:cover;"></span><span data-link-card-body style="display:flex;flex:1 1 auto;min-width:0;box-sizing:border-box;flex-direction:column;justify-content:center;overflow:hidden;padding:6px 10px;"><strong data-link-card-title contenteditable="true" style="display:block;font-size:18px;line-height:1.2;">リンク先のタイトル</strong><span data-link-card-description contenteditable="true" style="display:block;margin-top:2px;color:#64748b;font-size:16px;line-height:1.2;">リンク先の説明を入力します。</span><span data-link-card-action contenteditable="false" style="display:inline-flex;align-self:flex-start;margin-top:4px;color:#2563eb;font-size:16px;font-weight:700;line-height:1.2;">リンクを開く →</span></span></a></div>`,
-        toc: `<nav data-inserted-component="toc" data-toc-preset="simple" data-toc-title="目次" data-toc-back-links="false" aria-label="目次" style="margin:14px 0;padding:14px 16px;border:1px solid #d9dee8;border-radius:8px;background:#fbfcff;box-shadow:none;">
+        toc: `<nav data-inserted-component="toc" data-toc-preset="simple" data-toc-title="目次" data-toc-line-height="2.1" data-toc-back-links="false" aria-label="目次" style="margin:14px 0;padding:14px 16px;border:1px solid #d9dee8;border-radius:8px;background:#fbfcff;box-shadow:none;">
           <div data-toc-header contenteditable="false" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px;padding:0;background:transparent;border-radius:0;">
             <strong data-toc-title contenteditable="false" style="font-size:15px;color:#172033;">目次</strong>
             <button type="button" data-toc-refresh style="cursor:pointer;padding:3px 10px;font-size:12px;border:1px solid #d9dee8;border-radius:5px;background:#ffffff;color:#64748b;" title="現在の見出しから一覧を作り直します（この中の手動編集は上書きされます）">見出しを取得</button>
           </div>
-          <ol data-toc-list contenteditable="true" style="margin:0;padding-left:20px;line-height:1.9;"><li data-toc-empty style="color:#94a3b8;list-style:none;margin-left:-20px;">「見出しを取得」を押すと、現在の見出しから目次を作成します</li></ol>
+          <ol data-toc-list contenteditable="true" style="margin:0;padding-left:20px;line-height:2.1;"><li data-toc-empty style="color:#94a3b8;list-style:none;margin-left:-20px;">「見出しを取得」を押すと、現在の見出しから目次を作成します</li></ol>
         </nav>`
       };
       return blocks[type] || "";
@@ -14810,7 +14865,12 @@ ${bodyHtml}
         const title = header?.querySelector("[data-toc-title], strong");
         const button = header?.querySelector("[data-toc-refresh]");
         const list = component.querySelector("[data-toc-list]");
+        const storedLineHeight = Number.parseFloat(component.dataset.tocLineHeight || list?.style.lineHeight);
+        const lineHeight = Number.isFinite(storedLineHeight)
+          ? Math.max(1.2, Math.min(3, storedLineHeight))
+          : 2.1;
         component.dataset.tocPreset = presetName;
+        component.dataset.tocLineHeight = String(lineHeight);
         if (header) header.dataset.tocHeader = "true";
         if (title) {
           title.dataset.tocTitle = "true";
@@ -14842,7 +14902,7 @@ ${bodyHtml}
           list.style.color = preset.text;
           list.style.listStyleType = preset.listStyle;
           list.style.paddingLeft = preset.listPadding;
-          list.style.lineHeight = "1.9";
+          list.style.lineHeight = String(lineHeight);
           list.querySelectorAll("li").forEach((item) => {
             item.style.margin = "2px 0";
             if (presetName === "numbered") item.style.fontWeight = "600";
@@ -17279,6 +17339,292 @@ ${bodyHtml}
       }
     });
 
+    function sanitizeImportedArticleHtml(html) {
+      const parsed = new DOMParser().parseFromString(String(html || ""), "text/html");
+      const holder = document.createElement("div");
+      holder.innerHTML = parsed.body?.innerHTML || "";
+      // Keep only a recognized video URL; never import an iframe's attributes or document.
+      holder.querySelectorAll('iframe[src]').forEach((frame) => {
+        const url = frame.getAttribute('src');
+        if (/^https?:\/\//i.test(url) && (youTubeEmbedUrl(url) || vimeoEmbedUrl(url))) {
+          const paragraph = document.createElement('p');
+          paragraph.textContent = url;
+          frame.replaceWith(paragraph);
+        }
+      });
+      holder.querySelectorAll("script,style,iframe,object,embed,link,meta,base,template,noscript,svg,math,canvas").forEach((element) => element.remove());
+      holder.querySelectorAll("form").forEach((element) => element.replaceWith(...element.childNodes));
+      holder.querySelectorAll("input,button,textarea,select,option").forEach((element) => element.remove());
+      const safeUrl = (value, element) => {
+        const url = String(value || "").replace(/[\t\r\n]/g, "").trim();
+        if (!url) return "";
+        if (url.startsWith("#") || /^(?:https?:|mailto:|tel:|\/|\.\/|\.\.\/)/i.test(url)) return url;
+        if (element.tagName === "IMG" && /^data:image\/(?:png|gif|jpe?g|webp);base64,/i.test(url)) return url;
+        return /^[a-z][a-z\d+.-]*:/i.test(url) ? "" : url;
+      };
+      holder.querySelectorAll("*").forEach((element) => {
+        Array.from(element.attributes).forEach((attribute) => {
+          const name = attribute.name.toLowerCase();
+          if (name.startsWith("on") || ["srcdoc", "formaction", "action", "srcset"].includes(name)) {
+            element.removeAttribute(attribute.name);
+            return;
+          }
+          if (["href", "src", "poster"].includes(name)) {
+            const url = safeUrl(attribute.value, element);
+            if (url) element.setAttribute(attribute.name, url);
+            else element.removeAttribute(attribute.name);
+            return;
+          }
+          if (name === "style" && /expression\s*\(|url\s*\(\s*['\"]?\s*(?:javascript|vbscript|data:text\/html)|behavior\s*:|-moz-binding/i.test(attribute.value)) {
+            element.removeAttribute("style");
+          }
+        });
+      });
+      return holder.innerHTML.trim();
+    }
+
+    function recoverImportedEmbeds(root) {
+      const create = (type) => {
+        const holder = document.createElement("div");
+        holder.innerHTML = insertedComponentHtml(type);
+        return holder.firstElementChild;
+      };
+      const postSelector = 'blockquote.twitter-tweet, blockquote.twitter-video';
+      const postUrl = (quote) => Array.from(quote.querySelectorAll('a[href]'))
+        .map((link) => link.getAttribute('href')).find((url) => /^https?:\/\//i.test(url) && isXPostUrl(url));
+      Array.from(root.querySelectorAll(postSelector)).forEach((quote) => {
+        if (!root.contains(quote) || quote.closest('[data-inserted-component="xpost"]') || !postUrl(quote)) return;
+        let target = quote;
+        let quotes = [quote];
+        const column = quote.parentElement;
+        const row = column?.parentElement;
+        let side = null;
+        if (row && row !== root && row.style.display === "flex" && !row.hasAttribute("data-inserted-component")) {
+          const columns = Array.from(row.children);
+          const candidates = Array.from(row.querySelectorAll(postSelector));
+          if (columns.length >= 2 && columns.length <= 3 && candidates.length <= 3
+            && candidates.every(postUrl) && columns.every((child) => child.querySelectorAll(postSelector).length <= 1)) {
+            target = row;
+            quotes = candidates;
+            if (candidates.length === 1 && columns.length === 2) side = columns.find((child) => !child.contains(quote));
+          }
+        }
+        if (target === quote && column !== root && !column.hasAttribute('data-inserted-component')
+          && /%$/.test(column.style.maxWidth) && column.querySelectorAll(postSelector).length === 1) target = column;
+        const component = create("xpost");
+        component.dataset.xpostCount = String(quotes.length);
+        component.dataset.xpostMode = quote.classList.contains("twitter-tweet") ? "video" : "post";
+        component.dataset.xpostAlign = quote.getAttribute("data-align") || "left";
+        component.dataset.xpostMaxWidth = String(parseFloat(target.style.maxWidth) || (side ? parseFloat(column.style.flexBasis) : 55) || 55);
+        quotes.forEach((item, index) => {
+          component.dataset[index ? `embedUrl${index + 1}` : "embedUrl"] = postUrl(item);
+          const caption = item.nextElementSibling;
+          if (caption?.hasAttribute("data-xpost-caption")) {
+            component.dataset[index ? `xpostCaption${index + 1}` : "xpostCaption"] = caption.textContent;
+            component.dataset[index ? `xpostCaptionHtml${index + 1}` : "xpostCaptionHtml"] = caption.innerHTML;
+            if (target === item) caption.remove();
+          }
+        });
+        if (side) {
+          const image = side.children.length === 1 && side.firstElementChild.tagName === "IMG" ? side.firstElementChild : null;
+          component.dataset.xpostSideText = "true";
+          component.dataset.xpostSideContent = image ? "image" : "text";
+          component.dataset.xpostSideImageUrl = image?.getAttribute("src") || "";
+          component.dataset.xpostTextSide = side === target.firstElementChild ? "left" : "right";
+          component.dataset.xpostTextVerticalAlign = side.style.alignSelf === "flex-start" ? "top" : "center";
+          component.dataset.xpostSideTextAlign = side.style.textAlign || "left";
+          component.dataset.xpostSideTextFont = side.style.fontFamily || "inherit";
+          component.dataset.xpostSideTextSize = String(parseFloat(side.style.fontSize) || 16);
+          component.dataset.xpostSideTextColor = side.style.color || "#172033";
+          component.querySelector('[data-embed-text]').innerHTML = image ? "" : side.innerHTML;
+        }
+        target.replaceWith(component);
+      });
+      const videoUrl = (url) => /^https?:\/\//i.test(url) && (youTubeEmbedUrl(url) || vimeoEmbedUrl(url));
+      const makeVideo = (url) => {
+        const component = create("video");
+        component.dataset.embedUrl = url;
+        return component;
+      };
+      root.querySelectorAll('a[href]').forEach((link) => {
+        if (link.closest('[data-inserted-component="video"], [data-inserted-component="xpost"], pre, code')) return;
+        const url = link.getAttribute('href');
+        if (videoUrl(url) && link.textContent.trim() === url) link.replaceWith(makeVideo(url));
+      });
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      nodes.forEach((node) => {
+        if (node.parentElement.closest('a, pre, code, [data-inserted-component="video"], [data-inserted-component="xpost"]')) return;
+        const tokens = node.textContent.trim().split(/\s+/);
+        if (!tokens.length || !tokens.every(videoUrl)) return;
+        const videos = tokens.map(makeVideo);
+        let next = node.nextSibling;
+        while (next?.nodeType === Node.TEXT_NODE && !next.textContent.trim()) next = next.nextSibling;
+        if (next?.nodeType === Node.ELEMENT_NODE && next.hasAttribute('data-video-bottom-text')) {
+          videos.at(-1).dataset.videoBottomHtml = next.innerHTML;
+          videos.at(-1).dataset.videoBottomText = next.textContent;
+          next.remove();
+        }
+        node.replaceWith(...videos);
+      });
+    }
+
+    function restoreImportedEditorStructure(root = elements.preview) {
+      ensureDocumentBlocks();
+      root.querySelectorAll("[data-inserted-component]").forEach((component) => {
+        const type = component.dataset.insertedComponent;
+        if (["heading", "body"].includes(type)) return;
+        component.contentEditable = ["note", "quote"].includes(type) ? "true" : "false";
+        if (type === "list") component.querySelectorAll("li").forEach((item) => { item.contentEditable = "true"; });
+        if (type === "table") component.querySelectorAll("th,td").forEach((cell) => { cell.contentEditable = "true"; });
+        if (["image", "imageText", "imagePair"].includes(type)) {
+          component.querySelectorAll("figcaption,[data-image-caption]").forEach((caption) => { caption.contentEditable = "true"; });
+        }
+        if (type === "imageText") {
+          const candidates = Array.from(component.children).filter((child) => !child.querySelector("img") && child.tagName !== "IMG");
+          const sideContent = candidates.at(-1);
+          if (sideContent) {
+            sideContent.dataset.sideContentSlot = "true";
+            sideContent.contentEditable = "true";
+          }
+        }
+        if (type === "beforeAfter") {
+          Array.from(component.children).slice(0, 2).forEach((card) => {
+            card.dataset.sideContentSlot = "true";
+            card.contentEditable = "true";
+          });
+        }
+        if (type === "qa") component.querySelectorAll("[data-qa-content]").forEach((content) => { content.contentEditable = "true"; });
+        if (type === "code") component.querySelectorAll("[data-code-content]").forEach((content) => { content.contentEditable = "true"; });
+        if (type === "accordion") {
+          component.querySelectorAll("[data-accordion-title],[data-accordion-content]").forEach((content) => { content.contentEditable = "true"; });
+        }
+        if (type === "linkCard") {
+          component.querySelectorAll("[data-link-card-title],[data-link-card-description]").forEach((content) => { content.contentEditable = "true"; });
+        }
+        if (type === "toc") {
+          component.querySelector("[data-toc-list]")?.setAttribute("contenteditable", "true");
+          const header = component.querySelector("[data-toc-header]");
+          if (header && !header.querySelector("[data-toc-refresh]")) {
+            const refreshButton = document.createElement("button");
+            refreshButton.type = "button";
+            refreshButton.dataset.tocRefresh = "true";
+            refreshButton.contentEditable = "false";
+            refreshButton.textContent = "見出しを取得";
+            refreshButton.title = "現在の見出しから一覧を作り直します（この中の手動編集は上書きされます）";
+            refreshButton.style.cssText = "cursor:pointer;padding:3px 10px;font-size:12px;border:1px solid #d9dee8;border-radius:5px;background:#ffffff;color:#64748b;";
+            header.appendChild(refreshButton);
+          }
+        }
+      });
+      normalizeEmbeddedSideContent(root);
+      normalizeXPostSpacing(root);
+      normalizeLinkCardSize(root);
+      normalizeTocDesign(root);
+      syncTocBackLinks(root);
+      root.querySelectorAll('[data-inserted-component="xpost"], [data-inserted-component="video"]').forEach((component) => {
+        renderEmbedComponent(component);
+        if (component.dataset.insertedComponent === "xpost") applyXPostLayout(component);
+      });
+    }
+
+    function importArticleHtml(html, sourceName = "読み込んだHTML") {
+      const cleanedHtml = sanitizeImportedArticleHtml(html);
+      const contentCheck = document.createElement("div");
+      contentCheck.innerHTML = cleanedHtml;
+      recoverImportedEmbeds(contentCheck);
+      if (!contentCheck.textContent.trim() && !contentCheck.querySelector("img,table,hr,video,audio")) {
+        setStatus("読み込めるHTMLがありませんでした");
+        return false;
+      }
+      capturePreviewEdits();
+      activeInsertedComponent = null;
+      activePreviewTable = null;
+      savedPreviewRange = null;
+      formattedPreviewHtml = contentCheck.innerHTML;
+      previewIsCleared = false;
+      render({ forceReset: true });
+      restoreImportedEditorStructure(elements.preview);
+      capturePreviewEdits();
+      updateActiveArticleFile({ path: sourceName });
+      const restoredCount = elements.preview.querySelectorAll("[data-inserted-component]").length;
+      setStatus(`HTMLを読み込みました（再編集可能なパーツ ${restoredCount}件）`);
+      return true;
+    }
+
+    const htmlFileInput = document.querySelector("#htmlFileInput");
+    const htmlImportDialog = document.querySelector("#htmlImportDialog");
+    const htmlFilePanel = document.querySelector("#htmlFilePanel");
+    const htmlPastePanel = document.querySelector("#htmlPastePanel");
+    const htmlPasteText = document.querySelector("#htmlPasteText");
+    const htmlSelectedFileName = document.querySelector("#htmlSelectedFileName");
+    const htmlImportConfirmButton = document.querySelector("#htmlImportConfirmButton");
+    const syncHtmlImportMode = () => {
+      const mode = document.querySelector('input[name="htmlImportMode"]:checked')?.value || "file";
+      htmlFilePanel.hidden = mode !== "file";
+      htmlPastePanel.hidden = mode !== "paste";
+      if (htmlImportDialog?.open) {
+        if (mode === "paste") htmlPasteText.focus();
+        else document.querySelector("#htmlChooseFileButton")?.focus();
+      }
+      return mode;
+    };
+    document.querySelectorAll('input[name="htmlImportMode"]').forEach((input) => {
+      input.addEventListener("change", syncHtmlImportMode);
+    });
+    document.querySelector("#importHtmlButton")?.addEventListener("click", () => {
+      htmlFileInput.value = "";
+      htmlPasteText.value = "";
+      htmlSelectedFileName.textContent = "選択されていません";
+      const fileMode = document.querySelector('input[name="htmlImportMode"][value="file"]');
+      if (fileMode) fileMode.checked = true;
+      syncHtmlImportMode();
+      if (!htmlImportDialog.open) htmlImportDialog.showModal();
+    });
+    document.querySelector("#htmlChooseFileButton")?.addEventListener("click", () => htmlFileInput?.click());
+    htmlFileInput?.addEventListener("change", () => {
+      htmlSelectedFileName.textContent = htmlFileInput.files?.[0]?.name || "選択されていません";
+    });
+    document.querySelector("#htmlImportCancelButton")?.addEventListener("click", () => htmlImportDialog?.close());
+    htmlImportConfirmButton?.addEventListener("click", async () => {
+      const mode = syncHtmlImportMode();
+      htmlImportConfirmButton.disabled = true;
+      try {
+        if (mode === "paste") {
+          if (!htmlPasteText.value.trim()) {
+            setStatus("HTMLコードを貼り付けてください");
+            htmlPasteText.focus();
+            return;
+          }
+          if (importArticleHtml(htmlPasteText.value, "貼り付けたHTML")) htmlImportDialog.close();
+          return;
+        }
+        const file = htmlFileInput.files?.[0];
+        if (!file) {
+          setStatus("HTMLファイルを選択してください");
+          document.querySelector("#htmlChooseFileButton")?.focus();
+          return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          setStatus("HTMLファイルは5MB以下にしてください");
+          return;
+        }
+        if (importArticleHtml(await file.text(), articleFileDisplayPath(file))) htmlImportDialog.close();
+      } catch (error) {
+        console.error(error);
+        setStatus("HTMLを読み込めませんでした");
+      } finally {
+        htmlImportConfirmButton.disabled = false;
+      }
+    });
+    htmlPasteText?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        htmlImportConfirmButton?.click();
+      }
+    });
+
     const applyArticlePayload = (payload, { handle = null, file = null } = {}) => {
       const settings = payload.settings || payload;
       const articleHtml = typeof payload.articleHtml === "string" ? payload.articleHtml : payload.previewHtml;
@@ -18025,6 +18371,7 @@ ${bodyHtml}
         document.querySelector("#importJsonButton"),
         document.querySelector("#overwriteJsonButton"),
         document.querySelector("#exportJsonButton"),
+        document.querySelector("#importHtmlButton"),
         document.querySelector("#importMarkdownButton"),
         document.querySelector("#autosaveHistoryButton")
       ].filter(Boolean);

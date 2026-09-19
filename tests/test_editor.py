@@ -183,6 +183,128 @@ class EditorTests(unittest.TestCase):
         self.page.evaluate("performPreviewRedo()")
         self.assertEqual(self.page.evaluate("elements.preview.textContent"), "imported")
 
+    def test_exported_html_can_be_reimported_for_best_effort_editing(self):
+        exported = self.page.evaluate("""() => {
+            const body = elements.preview.querySelector('[data-inserted-component="body"]');
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedComponentHtml('note') + insertedComponentHtml('toc');
+            body.append(...holder.children);
+            capturePreviewEdits();
+            return formatOutputHtml(getPersistablePreviewHtml())
+              + '<script>window.__unsafeImport = true<\\/script>'
+              + '<img src="javascript:alert(1)" onerror="window.__unsafeImport = true">';
+        }""")
+        self.page.evaluate("""html => {
+            document.querySelector('#importHtmlButton').click();
+            const pasteMode = document.querySelector('input[name="htmlImportMode"][value="paste"]');
+            pasteMode.checked = true;
+            pasteMode.dispatchEvent(new Event('change', {bubbles: true}));
+            document.querySelector('#htmlPasteText').value = html;
+            document.querySelector('#htmlImportConfirmButton').click();
+        }""", exported)
+        self.page.wait_for_function("!document.querySelector('#htmlImportDialog').open")
+        result = self.page.evaluate("""() => ({
+            buttonInFileMenu: Boolean(document.querySelector('[data-file-actions="article"] #importHtmlButton')),
+            noteEditable: elements.preview.querySelector('[data-inserted-component="note"]')?.contentEditable,
+            tocRefresh: Boolean(elements.preview.querySelector('[data-inserted-component="toc"] [data-toc-refresh]')),
+            headingEditable: elements.preview.querySelector('[data-heading-content]')?.contentEditable,
+            bodyEditable: elements.preview.querySelector('[data-inserted-component="body"]')?.contentEditable,
+            scripts: elements.preview.querySelectorAll('script').length,
+            unsafeAttributes: elements.preview.querySelectorAll('[onerror],[src^="javascript:"]').length,
+            unsafeRan: window.__unsafeImport === true,
+            fileLabel: document.querySelector('#activeArticleFilePath').textContent,
+            overwriteDisabled: document.querySelector('#overwriteJsonButton').disabled
+        })""")
+        self.assertTrue(result["buttonInFileMenu"])
+        self.assertEqual(result["noteEditable"], "true")
+        self.assertTrue(result["tocRefresh"])
+        self.assertEqual(result["headingEditable"], "true")
+        self.assertEqual(result["bodyEditable"], "true")
+        self.assertEqual(result["scripts"], 0)
+        self.assertEqual(result["unsafeAttributes"], 0)
+        self.assertFalse(result["unsafeRan"])
+        self.assertIn("貼り付けたHTML", result["fileLabel"])
+        self.assertTrue(result["overwriteDisabled"])
+
+    def test_html_import_recovers_x_groups_and_youtube_settings(self):
+        result = self.page.evaluate("""() => {
+            window.twttr = {widgets: {load: () => {}}};
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedComponentHtml('xpost') + insertedComponentHtml('video');
+            const post = holder.children[0];
+            post.dataset.xpostCount = '3';
+            post.dataset.embedUrl = 'https://x.com/test/status/111';
+            post.dataset.embedUrl2 = 'https://twitter.com/test/status/222';
+            post.dataset.embedUrl3 = 'https://x.com/test/status/333';
+            post.dataset.xpostCaption2 = 'second caption';
+            const video = holder.children[1];
+            video.dataset.embedUrl = 'https://youtu.be/abcdefghijk';
+            video.dataset.videoBottomText = 'video caption';
+            const html = formatOutputHtml(holder.innerHTML);
+            importArticleHtml(html);
+            const restoredPost = elements.preview.querySelector('[data-inserted-component="xpost"]');
+            const restoredVideo = elements.preview.querySelector('[data-inserted-component="video"]');
+            activeInsertedComponent = restoredPost;
+            document.querySelector('.inserted-component-properties')._sync();
+            const count = document.querySelector('#xpostCount');
+            const restoredCount = count.value;
+            count.value = '2';
+            count.dispatchEvent(new Event('input', {bubbles:true}));
+            count.dispatchEvent(new Event('change', {bubbles:true}));
+            return {
+              restoredCount,
+              countAfterEdit: restoredPost.dataset.xpostCount,
+              url2: restoredPost.dataset.embedUrl2,
+              caption2: restoredPost.dataset.xpostCaption2,
+              videoUrl: restoredVideo?.dataset.embedUrl,
+              videoCaption: restoredVideo?.dataset.videoBottomText,
+              iframe: restoredVideo?.querySelector('iframe')?.getAttribute('src'),
+              exportedAgain: formatOutputHtml(getPersistablePreviewHtml())
+            };
+        }""")
+        self.assertEqual(result['restoredCount'], '3')
+        self.assertEqual(result['countAfterEdit'], '2')
+        self.assertEqual(result['url2'], 'https://twitter.com/test/status/222')
+        self.assertEqual(result['caption2'], 'second caption')
+        self.assertEqual(result['videoUrl'], 'https://youtu.be/abcdefghijk')
+        self.assertEqual(result['videoCaption'], 'video caption')
+        self.assertEqual(result['iframe'], 'https://www.youtube.com/embed/abcdefghijk')
+        self.assertIn('https://youtu.be/abcdefghijk', result['exportedAgain'])
+
+    def test_html_import_recovers_x_side_text_and_trusted_video_iframe(self):
+        result = self.page.evaluate("""() => {
+            window.twttr = {widgets: {load: () => {}}};
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedComponentHtml('xpost');
+            const post = holder.firstElementChild;
+            Object.assign(post.dataset, {
+              embedUrl: 'https://x.com/test/status/111', xpostSideText: 'true',
+              xpostSideContent: 'text', xpostTextSide: 'left', xpostMaxWidth: '40'
+            });
+            post.querySelector('[data-embed-text]').innerHTML = '<b>side text</b>';
+            const html = formatOutputHtml(holder.innerHTML)
+              + '<iframe src="https://www.youtube.com/embed/abcdefghijk" onload="window.unsafe = true"></iframe>'
+              + '<iframe src="https://example.com/untrusted"></iframe>';
+            importArticleHtml(html);
+            const restored = elements.preview.querySelector('[data-inserted-component="xpost"]');
+            return {
+              count: restored.dataset.xpostCount,
+              side: restored.dataset.xpostTextSide,
+              enabled: restored.dataset.xpostSideText,
+              width: restored.dataset.xpostMaxWidth,
+              text: restored.querySelector('[data-embed-text]').textContent,
+              iframes: [...elements.preview.querySelectorAll('iframe')].map(frame => frame.src),
+              handlers: elements.preview.querySelectorAll('[onload]').length
+            };
+        }""")
+        self.assertEqual(result['count'], '1')
+        self.assertEqual(result['side'], 'left')
+        self.assertEqual(result['enabled'], 'true')
+        self.assertEqual(result['width'], '40')
+        self.assertEqual(result['text'].strip(), 'side text')
+        self.assertEqual(result['iframes'], ['https://www.youtube.com/embed/abcdefghijk'])
+        self.assertEqual(result['handlers'], 0)
+
     def test_component_insert_save_restore(self):
         types = ["list", "note", "quote", "qa", "table", "image", "imageText", "imagePair",
                  "beforeAfter", "code", "rule", "xpost", "video", "linkCard", "toc"]
@@ -240,6 +362,50 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["singleGroupTitle"], "1枚目")
         self.assertEqual(result["singleLinkLabel"], "1枚目のリンクURL")
         self.assertTrue(result["singleCaptionInGroup"])
+
+    def test_note_spot_presets_use_content_width_and_keep_legacy_notes_full_width(self):
+        result = self.page.evaluate("""() => {
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedComponentHtml('note');
+            const note = holder.firstElementChild;
+            elements.preview.replaceChildren(note);
+            activeInsertedComponent = note;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const legacyLayout = document.querySelector('#noteWidthMode').value;
+            const preset = document.querySelector('#notePreset');
+            const applyPreset = value => {
+              preset.value = value;
+              preset.dispatchEvent(new Event('change', {bubbles: true}));
+              return {
+                preset: note.dataset.notePreset,
+                layout: note.dataset.noteLayout,
+                display: note.style.display,
+                width: note.style.width,
+                icon: note.querySelector('[data-note-icon]')?.textContent,
+                borderStyle: note.style.borderStyle
+              };
+            };
+            const spotMemo = applyPreset('spotMemo');
+            const spotWarning = applyPreset('spotWarning');
+            return {
+              legacyLayout,
+              optionValues: [...preset.options].map(option => option.value),
+              spotMemo,
+              spotWarning,
+              savedHtml: getPersistablePreviewHtml()
+            };
+        }""")
+        self.assertEqual(result["legacyLayout"], "block")
+        self.assertIn("spotMemo", result["optionValues"])
+        self.assertIn("spotWarning", result["optionValues"])
+        self.assertEqual(result["spotMemo"]["layout"], "spot")
+        self.assertEqual(result["spotMemo"]["display"], "inline-block")
+        self.assertEqual(result["spotMemo"]["width"], "fit-content")
+        self.assertEqual(result["spotMemo"]["icon"], "📌")
+        self.assertEqual(result["spotWarning"]["layout"], "spot")
+        self.assertEqual(result["spotWarning"]["icon"], "⚠️")
+        self.assertIn('data-note-layout="spot"', result["savedHtml"])
 
     def test_image_count_conversion_preserves_legacy_pair_content(self):
         result = self.page.evaluate("""() => {
@@ -447,6 +613,50 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["disabledCount"], 0)
         self.assertEqual(result["disabledDisplay"], "")
         self.assertEqual(result["afterTocRemoval"], 0)
+
+    def test_toc_line_height_is_roomier_and_adjustable(self):
+        result = self.page.evaluate("""() => {
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedComponentHtml('toc');
+            const toc = holder.firstElementChild;
+            const list = toc.querySelector('[data-toc-list]');
+            elements.preview.replaceChildren(toc);
+            activeInsertedComponent = toc;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const control = document.querySelector('#tocLineHeight');
+            const initial = {
+              control: control.value,
+              dataset: toc.dataset.tocLineHeight,
+              style: list.style.lineHeight
+            };
+            control.value = '2.4';
+            control.dispatchEvent(new Event('change', {bubbles: true}));
+            const adjusted = {
+              dataset: toc.dataset.tocLineHeight,
+              style: list.style.lineHeight,
+              savedHtml: getPersistablePreviewHtml()
+            };
+
+            holder.innerHTML = insertedComponentHtml('toc');
+            const legacyToc = holder.firstElementChild;
+            const legacyList = legacyToc.querySelector('[data-toc-list]');
+            legacyToc.removeAttribute('data-toc-line-height');
+            legacyList.style.lineHeight = '1.9';
+            normalizeTocDesign(legacyToc);
+            return {
+              initial,
+              adjusted,
+              legacyDataset: legacyToc.dataset.tocLineHeight,
+              legacyStyle: legacyList.style.lineHeight
+            };
+        }""")
+        self.assertEqual(result["initial"], {"control": "2.1", "dataset": "2.1", "style": "2.1"})
+        self.assertEqual(result["adjusted"]["dataset"], "2.4")
+        self.assertEqual(result["adjusted"]["style"], "2.4")
+        self.assertIn('data-toc-line-height="2.4"', result["adjusted"]["savedHtml"])
+        self.assertEqual(result["legacyDataset"], "1.9")
+        self.assertEqual(result["legacyStyle"], "1.9")
 
     def test_obfuscated_script_url_is_removed(self):
         result = self.page.evaluate("""() => {
