@@ -9094,7 +9094,8 @@ ${bodyHtml}
 
     function cleanupEmptyFormattingSpans(root = elements.preview) {
       Array.from(root.querySelectorAll("span")).reverse().forEach((span) => {
-        if (span.matches("[data-speech-tail]")) return;
+        if (span.matches("[data-speech-tail], [data-shape-visual]")
+          || span.querySelector("[data-speech-tail], [data-shape-visual]")) return;
         const hasVisibleContent = span.textContent.length > 0
           || Boolean(span.querySelector("br, img, video, audio, iframe, hr"));
         if (!hasVisibleContent) {
@@ -17947,10 +17948,10 @@ ${bodyHtml}
         invalidStructure.target.scrollIntoView({ behavior: "smooth", block: "center" });
         return;
       }
-      cleanupEmptyFormattingSpans();
-      if (elements.preview.innerHTML) formattedPreviewHtml = getPersistablePreviewHtml();
-      const rawHtml = formattedPreviewHtml || buildHtml();
-      const html = stampBoundaryCommentsForCopy(formatOutputHtml(rawHtml));
+      const copyContent = document.createElement('div');
+      copyContent.innerHTML = getPersistablePreviewHtml();
+      cleanupEmptyFormattingSpans(copyContent);
+      const html = stampBoundaryCommentsForCopy(formatOutputHtml(copyContent.innerHTML));
       elements.code.textContent = html;
       try {
         await navigator.clipboard.writeText(html);

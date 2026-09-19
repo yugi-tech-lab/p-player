@@ -85,6 +85,24 @@ class EditorTests(unittest.TestCase):
         self.assertEqual([entry['text'] for entry in result], ['↓','↑','→','←','▼','▲','▶','◀'])
         self.assertTrue(all(entry['noAdvancedCss'] for entry in result))
 
+    def test_copy_html_keeps_shape_preview_and_history_unchanged(self):
+        result = self.page.evaluate("""async () => {
+            elements.preview.innerHTML = shapeComponentHtml();
+            capturePreviewEdits();
+            const before = elements.preview.innerHTML;
+            const historyCount = previewHistory.length;
+            let copied = '';
+            Object.defineProperty(navigator, 'clipboard', {configurable:true, value:{writeText:async text => {copied = text;}}});
+            await copyGeneratedHtml();
+            await copyGeneratedHtml();
+            const visual = elements.preview.querySelector('[data-shape-visual]');
+            return {unchanged:elements.preview.innerHTML === before,
+              visible:!!visual && visual.getBoundingClientRect().height > 0,
+              sameHistory:previewHistory.length === historyCount,
+              copied:copied.includes('↓')};
+        }""")
+        self.assertEqual(result, dict(unchanged=True, visible=True, sameHistory=True, copied=True))
+
     def test_ime_confirmation_does_not_insert_newline_and_undo_is_atomic(self):
         result = self.page.evaluate("""() => {
             elements.preview.innerHTML = '<p>start</p>'; capturePreviewEdits();
