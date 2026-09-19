@@ -7440,9 +7440,11 @@ ${bodyHtml}
         html = html.replace(/<!--[\s\S]*?-->\s*/g, "");
       }
       if (mode === "compact") {
-        return html.replace(/>\s+</g, "><").replace(/\s{2,}/g, " ").trim();
+        html = html.replace(/>\s+</g, "><").replace(/\s{2,}/g, " ").trim();
+      } else {
+        html = html.replace(/>\s*</g, ">\n<").trim();
       }
-      return html.replace(/>\s*</g, ">\n<").trim();
+      return ensureBoundaryComments(html);
     }
 
     function collectPreviewSearchMatches() {
@@ -17193,16 +17195,22 @@ ${bodyHtml}
       reader.readAsText(file);
     });
 
+    function ensureBoundaryComments(html, label = "コピー時に日時を記録") {
+      const source = String(html ?? "");
+      const content = source.replace(/<!--([\s\S]*?)-->/g, (comment, commentBody) => (
+        /p-player\s+(開始|終了)\s*[:：]/.test(commentBody) ? "" : comment
+      )).trim();
+      if (!elements.includeBoundaryComments?.checked) return content;
+      const start = `<!-- ーーーーーーー p-player 開始：${label} ーーーーーーー -->`;
+      const end = `<!-- ーーーーーーー p-player 終了：${label} ーーーーーーー -->`;
+      return content ? `${start}\n${content}\n${end}` : `${start}\n${end}`;
+    }
+
     function stampBoundaryCommentsForCopy(html) {
       const now = new Date();
       const pad = (value) => String(value).padStart(2, "0");
       const copiedAt = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-      const source = String(html ?? "");
-      return source.replace(/<!--([\s\S]*?)-->/g, (comment, content) => {
-        const boundary = content.match(/p-player\s+(開始|終了)\s*[:：]/);
-        if (!boundary) return comment;
-        return `<!-- ーーーーーーー p-player ${boundary[1]}：コピー日時 ${copiedAt} ーーーーーーー -->`;
-      });
+      return ensureBoundaryComments(html, `コピー日時 ${copiedAt}`);
     }
 
     async function copyGeneratedHtml() {
@@ -17215,7 +17223,7 @@ ${bodyHtml}
       cleanupEmptyFormattingSpans();
       if (elements.preview.innerHTML) formattedPreviewHtml = getPersistablePreviewHtml();
       const rawHtml = formattedPreviewHtml || buildHtml();
-      const html = formatOutputHtml(stampBoundaryCommentsForCopy(rawHtml));
+      const html = stampBoundaryCommentsForCopy(formatOutputHtml(rawHtml));
       elements.code.textContent = html;
       try {
         await navigator.clipboard.writeText(html);

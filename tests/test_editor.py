@@ -365,19 +365,33 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result, "link")
 
     def test_copy_boundary_comments_are_stamped_safely(self):
-        result = self.page.evaluate("""() => ({
-            stamped: stampBoundaryCommentsForCopy(
+        result = self.page.evaluate("""() => {
+            const stamped = stampBoundaryCommentsForCopy(
               '<!-- ーーーーーーー p-player 開始：コピー時に日時を記録 ーーーーーーー -->\\n'
               + '<p>本文</p>\\n'
               + '<!-- ーーーーーーー p-player 終了:copy time ーーーーーーー -->\\n'
               + '<!-- keep this comment -->'
-            ),
-            nullInput: stampBoundaryCommentsForCopy(null)
-        })""")
+            );
+            elements.htmlOutputMode.value = 'noComments';
+            elements.includeBoundaryComments.checked = true;
+            const noCommentsMode = formatOutputHtml('<p>本文</p><!-- remove this comment -->');
+            const missingBoundaries = stampBoundaryCommentsForCopy('<p>本文</p>');
+            elements.includeBoundaryComments.checked = false;
+            const disabled = formatOutputHtml(
+              '<!-- ーーーーーーー p-player 開始：old ーーーーーーー --><p>本文</p>'
+              + '<!-- ーーーーーーー p-player 終了：old ーーーーーーー -->'
+            );
+            return {stamped, noCommentsMode, missingBoundaries, disabled};
+        }""")
         self.assertIn("p-player 開始：コピー日時", result["stamped"])
         self.assertIn("p-player 終了：コピー日時", result["stamped"])
         self.assertIn("<!-- keep this comment -->", result["stamped"])
-        self.assertEqual(result["nullInput"], "")
+        self.assertIn("p-player 開始：コピー時に日時を記録", result["noCommentsMode"])
+        self.assertIn("p-player 終了：コピー時に日時を記録", result["noCommentsMode"])
+        self.assertNotIn("remove this comment", result["noCommentsMode"])
+        self.assertIn("p-player 開始：コピー日時", result["missingBoundaries"])
+        self.assertIn("p-player 終了：コピー日時", result["missingBoundaries"])
+        self.assertNotIn("p-player", result["disabled"])
 
     def test_markdown_and_csv(self):
         result = self.page.evaluate("""() => {
