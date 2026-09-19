@@ -845,6 +845,7 @@ class EditorTests(unittest.TestCase):
               return createDocumentBlockFromFragment('heading', fragment, readDocumentBlockSettings('heading'));
             });
             elements.preview.replaceChildren(toc, ...headings);
+            refreshTocComponent(toc);
             activeInsertedComponent = toc;
             const properties = document.querySelector('.inserted-component-properties');
             properties._sync();
@@ -882,7 +883,9 @@ class EditorTests(unittest.TestCase):
                 <span data-heading-content>通常の見出し</span></h2></div>
               <div data-inserted-component="heading"><h2 style="color:#123456">
                 <span data-heading-content> <span></span><span style="color:#ff0000"><b>赤</b></span><span style="color:#0000ff">青</span></span></h2></div>`;
-            elements.preview.querySelector('[data-inserted-component="toc"]').dataset.tocHeadingNumbers = 'true';
+            const toc = elements.preview.querySelector('[data-inserted-component="toc"]');
+            toc.dataset.tocHeadingNumbers = 'true';
+            refreshTocComponent(toc);
             syncTocBackLinks();
             const colors = root => [...root.querySelectorAll('[data-toc-heading-number]')].map(el => el.style.color);
             const initial = colors(elements.preview);
@@ -899,6 +902,33 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result['initial'], ['rgb(18, 52, 86)', 'rgb(255, 0, 0)'])
         for stage in ('changed', 'exported', 'restored'):
             self.assertEqual(result[stage], ['rgb(18, 52, 86)', 'rgb(0, 128, 0)'])
+
+    def test_toc_numbering_skips_headings_missing_from_toc(self):
+        result = self.page.evaluate("""() => {
+            elements.preview.innerHTML = insertedComponentHtml('toc') +
+              ['Alpha', 'Beta', 'Gamma', 'Delta'].map((text, i) =>
+                `<div data-inserted-component="heading"><h2 id="heading-${i+1}"><span data-heading-content>${text}</span></h2></div>`).join('');
+            const toc = elements.preview.querySelector('[data-inserted-component="toc"]');
+            toc.dataset.tocHeadingNumbers = 'true';
+            refreshTocComponent(toc);
+            const numbers = () => [...elements.preview.querySelectorAll('h2')].map(
+              heading => heading.querySelector('[data-toc-heading-number]')?.textContent || '');
+            const initial = numbers();
+            toc.querySelector('a[href="#heading-1"]').closest('li').remove();
+            toc.querySelector('a[href="#heading-3"]').closest('li').remove();
+            capturePreviewEdits();
+            const filtered = numbers();
+            const html = formatOutputHtml(getPersistablePreviewHtml());
+            importArticleHtml(html);
+            const restored = numbers();
+            elements.preview.querySelector('[data-toc-list]').replaceChildren();
+            capturePreviewEdits();
+            return {initial, filtered, restored, empty: numbers()};
+        }""")
+        self.assertEqual(result['initial'], ['1. ', '2. ', '3. ', '4. '])
+        self.assertEqual(result['filtered'], ['', '1. ', '', '2. '])
+        self.assertEqual(result['restored'], ['', '1. ', '', '2. '])
+        self.assertEqual(result['empty'], ['', '', '', ''])
 
     def test_toc_line_height_is_roomier_and_adjustable(self):
         result = self.page.evaluate("""() => {

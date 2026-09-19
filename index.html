@@ -15086,9 +15086,20 @@ ${bodyHtml}
       const headings = Array.from(root.querySelectorAll(
         '[data-inserted-component="heading"] h2, [data-inserted-component="heading"] h3, [data-inserted-component="heading"] h4'
       ));
-      const numberHeadings = tocComponents.some((component) => component.dataset.tocHeadingNumbers === "true");
+      const numberedHeadingIds = new Set();
+      tocComponents.filter((component) => component.dataset.tocHeadingNumbers === "true").forEach((component) => {
+        component.querySelectorAll('[data-toc-list] a[href^="#"]').forEach((link) => {
+          const fragment = link.getAttribute('href').slice(1);
+          if (!fragment) return;
+          try {
+            numberedHeadingIds.add(decodeURIComponent(fragment));
+          } catch {
+            numberedHeadingIds.add(fragment);
+          }
+        });
+      });
       root.querySelectorAll('[data-toc-heading-number]').forEach((number) => number.remove());
-      if (numberHeadings) headings.forEach((heading, index) => {
+      headings.filter((heading) => numberedHeadingIds.has(heading.id)).forEach((heading, index) => {
         const number = document.createElement('span');
         number.dataset.tocHeadingNumber = 'true';
         number.contentEditable = 'false';
