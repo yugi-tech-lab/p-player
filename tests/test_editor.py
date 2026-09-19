@@ -875,6 +875,31 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result['disabled'], [])
         self.assertEqual(result['titles'], ['Beta', 'Alpha'])
 
+    def test_toc_heading_number_color_matches_first_text(self):
+        result = self.page.evaluate("""() => {
+            elements.preview.innerHTML = insertedComponentHtml('toc') + `
+              <div data-inserted-component="heading"><h2 style="color:#123456">
+                <span data-heading-content>通常の見出し</span></h2></div>
+              <div data-inserted-component="heading"><h2 style="color:#123456">
+                <span data-heading-content> <span></span><span style="color:#ff0000"><b>赤</b></span><span style="color:#0000ff">青</span></span></h2></div>`;
+            elements.preview.querySelector('[data-inserted-component="toc"]').dataset.tocHeadingNumbers = 'true';
+            syncTocBackLinks();
+            const colors = root => [...root.querySelectorAll('[data-toc-heading-number]')].map(el => el.style.color);
+            const initial = colors(elements.preview);
+            elements.preview.querySelector('[data-heading-content] span[style]').style.color = '#008000';
+            capturePreviewEdits();
+            const changed = colors(elements.preview);
+            const html = formatOutputHtml(getPersistablePreviewHtml());
+            const output = document.createElement('div');
+            output.innerHTML = html;
+            const exported = colors(output);
+            importArticleHtml(html);
+            return {initial, changed, exported, restored: colors(elements.preview)};
+        }""")
+        self.assertEqual(result['initial'], ['rgb(18, 52, 86)', 'rgb(255, 0, 0)'])
+        for stage in ('changed', 'exported', 'restored'):
+            self.assertEqual(result[stage], ['rgb(18, 52, 86)', 'rgb(0, 128, 0)'])
+
     def test_toc_line_height_is_roomier_and_adjustable(self):
         result = self.page.evaluate("""() => {
             const holder = document.createElement('div');

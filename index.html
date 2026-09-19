@@ -15095,6 +15095,25 @@ ${bodyHtml}
         number.textContent = `${index + 1}. `;
         number.style.cssText = 'white-space:pre;flex:0 0 auto;';
         const content = heading.querySelector(':scope > [data-heading-content]');
+        const textWalker = document.createTreeWalker(content || heading, NodeFilter.SHOW_TEXT, {
+          acceptNode: (node) => /[^\s\u200b-\u200d\ufeff]/u.test(node.textContent)
+            && !node.parentElement.closest('[data-heading-prefix], [data-toc-back-link]')
+            ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
+        });
+        const firstTextElement = textWalker.nextNode()?.parentElement || content || heading;
+        if (firstTextElement.isConnected) {
+          number.style.color = getComputedStyle(firstTextElement).color;
+        } else {
+          // Export/import also synchronizes detached trees: resolve their inline
+          // inherited color without relying on unavailable computed styles.
+          for (let element = firstTextElement; element; element = element.parentElement) {
+            const color = element.style.color || (element.tagName === 'FONT' ? element.getAttribute('color') : '');
+            if (color && !['inherit', 'unset', 'currentcolor'].includes(color.toLowerCase())) {
+              number.style.color = color;
+              break;
+            }
+          }
+        }
         heading.insertBefore(number, content || heading.firstChild);
       });
       const removeBackLink = (heading) => {
