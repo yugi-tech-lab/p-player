@@ -127,6 +127,41 @@ class EditorTests(unittest.TestCase):
         })
         self.page.wait_for_function("jsonFileInput.value === ''")
         self.assertEqual(self.page.evaluate("elements.preview.innerHTML"), "")
+        self.assertIn("empty.json", self.page.locator('#activeArticleFilePath').text_content())
+        self.assertTrue(self.page.locator('#overwriteJsonButton').is_disabled())
+
+    def test_opened_article_can_be_overwritten_and_shows_its_file(self):
+        payload = json.dumps({"saveType": "full", "articleHtml": "<p>opened article</p>"})
+        self.page.evaluate("""payload => {
+            window.__articleWrites = [];
+            const handle = {
+              name: 'opened-article.json',
+              getFile: async () => ({name: 'opened-article.json', text: async () => payload}),
+              createWritable: async () => ({
+                write: async blob => window.__articleWrites.push(await blob.text()),
+                close: async () => {}
+              })
+            };
+            window.showOpenFilePicker = async () => [handle];
+        }""", payload)
+        self.page.evaluate("document.querySelector('#importJsonButton').click()")
+        self.page.wait_for_function("!document.querySelector('#overwriteJsonButton').disabled")
+        self.assertIn("opened-article.json", self.page.locator('#activeArticleFilePath').text_content())
+        self.assertEqual(
+            self.page.evaluate("document.querySelector('#activeArticleFilePath').nextElementSibling.id"),
+            "characterCount",
+        )
+        self.assertEqual(self.page.evaluate("elements.preview.textContent"), "opened article")
+
+        self.page.evaluate("document.querySelector('#overwriteJsonButton').click()")
+        self.page.wait_for_function("window.__articleWrites.length === 1")
+        written = self.page.evaluate("JSON.parse(window.__articleWrites[0])")
+        self.assertEqual(written["saveType"], "full")
+        self.assertIn("opened article", written["articleHtml"])
+
+        self.page.evaluate("window.confirm = () => true; document.querySelector('#resetButton').click()")
+        self.assertTrue(self.page.locator('#overwriteJsonButton').is_disabled())
+        self.assertTrue(self.page.locator('#activeArticleFilePath').is_hidden())
 
     def test_pending_edits_saved_on_pagehide(self):
         result = self.page.evaluate("""() => {
@@ -357,6 +392,61 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["caretColumns"], ["0-0", "0-2"])
         self.assertEqual(result["selectedRows"], ["1-0"])
         self.assertEqual(result["selectedColumns"], ["0-1"])
+
+    def test_toc_flag_adds_back_links_to_headings(self):
+        result = self.page.evaluate("""() => {
+            const makeHeading = (text) => {
+              const fragment = document.createDocumentFragment();
+              fragment.appendChild(document.createTextNode(text));
+              return createDocumentBlockFromFragment('heading', fragment, readDocumentBlockSettings('heading'));
+            };
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedComponentHtml('toc');
+            const toc = holder.firstElementChild;
+            elements.preview.replaceChildren(toc, makeHeading('見出しA'), makeHeading('見出しB'));
+            activeInsertedComponent = toc;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const flag = document.querySelector('#tocBackLinks');
+            flag.checked = true;
+            flag.dispatchEvent(new Event('change', {bubbles: true}));
+            const links = Array.from(elements.preview.querySelectorAll('[data-toc-back-link]'));
+            const enabled = {
+              flag: toc.dataset.tocBackLinks,
+              tocId: toc.id,
+              count: links.length,
+              hrefs: links.map(link => link.getAttribute('href')),
+              labels: links.map(link => link.textContent),
+              headingDisplay: elements.preview.querySelector('[data-inserted-component="heading"] h2').style.display
+            };
+            const outputHolder = document.createElement('div');
+            outputHolder.innerHTML = formatOutputHtml(getPersistablePreviewHtml());
+            enabled.outputLinks = Array.from(outputHolder.querySelectorAll(`a[href="#${toc.id}"]`)).length;
+            enabled.outputEditorMarkers = outputHolder.querySelectorAll('[data-toc-back-link]').length;
+
+            flag.checked = false;
+            flag.dispatchEvent(new Event('change', {bubbles: true}));
+            const disabledCount = elements.preview.querySelectorAll('[data-toc-back-link]').length;
+            const disabledDisplay = elements.preview.querySelector('[data-inserted-component="heading"] h2').style.display;
+
+            flag.checked = true;
+            flag.dispatchEvent(new Event('change', {bubbles: true}));
+            toc.remove();
+            capturePreviewEdits();
+            const afterTocRemoval = elements.preview.querySelectorAll('[data-toc-back-link]').length;
+            return {enabled, disabledCount, disabledDisplay, afterTocRemoval};
+        }""")
+        self.assertEqual(result["enabled"]["flag"], "true")
+        self.assertTrue(result["enabled"]["tocId"].startswith("p-player-toc"))
+        self.assertEqual(result["enabled"]["count"], 2)
+        self.assertEqual(result["enabled"]["hrefs"], [f'#{result["enabled"]["tocId"]}'] * 2)
+        self.assertEqual(result["enabled"]["labels"], ["↑ 目次", "↑ 目次"])
+        self.assertEqual(result["enabled"]["headingDisplay"], "flex")
+        self.assertEqual(result["enabled"]["outputLinks"], 2)
+        self.assertEqual(result["enabled"]["outputEditorMarkers"], 0)
+        self.assertEqual(result["disabledCount"], 0)
+        self.assertEqual(result["disabledDisplay"], "")
+        self.assertEqual(result["afterTocRemoval"], 0)
 
     def test_obfuscated_script_url_is_removed(self):
         result = self.page.evaluate("""() => {

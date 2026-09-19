@@ -1533,6 +1533,23 @@
       white-space: nowrap;
     }
 
+    .active-article-file-path {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: min(420px, 34vw);
+      overflow: hidden;
+      color: var(--muted);
+      font-family: "Consolas", "SFMono-Regular", "BIZ UDPGothic", monospace;
+      font-size: 0.76rem;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .active-article-file-path[hidden] {
+      display: none;
+    }
+
     .preview-history-actions {
       display: flex;
       gap: 6px;
@@ -2466,6 +2483,7 @@
     }
 
     #exportJsonButton,
+    #overwriteJsonButton,
     #importJsonButton,
     #newLayoutButton,
     #importLayoutButton {
@@ -2473,12 +2491,14 @@
     }
 
     #exportJsonButton::after,
+    #overwriteJsonButton::after,
     #importJsonButton::after,
     #newLayoutButton::after {
       font-size: 0.84rem;
     }
 
-    #exportJsonButton::after { content: "記事を保存"; }
+    #exportJsonButton::after { content: "名前を付けて保存"; }
+    #overwriteJsonButton::after { content: "上書き保存"; }
     #newLayoutButton::after { content: "設定を作成"; }
     #importJsonButton::after { content: "記事を開く"; }
     #importLayoutButton::after { content: "設定を開く"; }
@@ -4421,6 +4441,13 @@
       color: #ffffff;
     }
 
+    .file-actions-group-buttons .file-menu-save:disabled,
+    .file-actions-group-buttons .file-menu-save:disabled:hover {
+      border-color: #d5dde1;
+      background: #eef2f3;
+      color: #929da3;
+    }
+
     .file-actions-group-buttons #autosaveHistoryButton {
       grid-column: 1 / -1;
     }
@@ -5521,7 +5548,8 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
             </select>
           </div>
           <div class="button-row">
-            <button class="secondary" id="exportJsonButton" type="button">JSONを書き出す</button>
+            <button class="secondary" id="overwriteJsonButton" type="button" disabled>上書き保存</button>
+            <button class="secondary" id="exportJsonButton" type="button">名前を付けて保存</button>
             <button class="secondary" id="importJsonButton" type="button">JSONを読み込む</button>
             <input id="jsonFileInput" type="file" accept="application/json,.json" hidden>
           </div>
@@ -5547,6 +5575,7 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
         <section class="panel preview" aria-label="プレビュー">
           <div class="preview-heading-row">
             <h2>プレビュー</h2>
+            <span class="active-article-file-path" id="activeArticleFilePath" hidden></span>
             <span class="character-count" id="characterCount" title="空白と改行を除いた、プレビュー内の文字数です">文字数 0</span>
             <div class="preview-history-actions">
               <button class="secondary" id="keyboardShortcutsButton" type="button" aria-haspopup="dialog" aria-controls="keyboardShortcutsDialog">⌨ ショートカット</button>
@@ -6068,6 +6097,8 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
     let applyComponentPresetPropertiesToTarget = () => false;
     let activeLayoutFileHandle = null;
     let activeLayoutFileName = "";
+    let activeArticleFileHandle = null;
+    let activeArticleFilePath = "";
 
     const elements = {
       preset: document.querySelector("#preset"),
@@ -7211,6 +7242,7 @@ ${bodyHtml}
       syncRuledCardMetricsForPreview();
       normalizeLinkCardSize(elements.preview);
       normalizeTocDesign(elements.preview);
+      syncTocBackLinks(elements.preview);
       const clone = elements.preview.cloneNode(true);
       clone.querySelectorAll(".is-document-block-active, .is-embedded-component-active, .table-cell-selected, .invalid-operation-target").forEach((element) => {
         element.classList.remove("is-document-block-active", "is-embedded-component-active", "table-cell-selected", "invalid-operation-target");
@@ -7279,6 +7311,7 @@ ${bodyHtml}
       outputHolder.innerHTML = html;
       normalizeLinkCardSize(outputHolder);
       normalizeTocDesign(outputHolder);
+      syncTocBackLinks(outputHolder);
       // Embed URL cards are editor-only UI. Remove them globally before
       // converting components as a safeguard in case contenteditable editing
       // has moved a card outside its original video/X component wrapper.
@@ -7415,6 +7448,12 @@ ${bodyHtml}
       outputHolder.querySelectorAll("[data-heading-content], [data-heading-prefix]").forEach((element) => {
         element.removeAttribute("data-heading-content");
         element.removeAttribute("data-heading-prefix");
+      });
+      outputHolder.querySelectorAll("[data-toc-back-link]").forEach((element) => {
+        element.removeAttribute("data-toc-back-link");
+      });
+      outputHolder.querySelectorAll("[data-toc-back-layout]").forEach((element) => {
+        element.removeAttribute("data-toc-back-layout");
       });
       outputHolder.querySelectorAll("[data-embedded-component]").forEach((element) => {
         element.removeAttribute("data-embedded-component");
@@ -10082,13 +10121,15 @@ ${bodyHtml}
         const saveSummary = saveDetails.querySelector("summary");
         if (saveSummary) saveSummary.textContent = "設定・記事の保存";
         const exportButton = document.querySelector("#exportJsonButton");
+        const overwriteButton = document.querySelector("#overwriteJsonButton");
         const importButton = document.querySelector("#importJsonButton");
         const fileInput = document.querySelector("#jsonFileInput");
         Array.from(saveDetails.children).forEach((child) => {
           if (child !== saveSummary) child.remove();
         });
         if (exportButton && importButton) {
-          exportButton.textContent = "記事を保存";
+          exportButton.textContent = "名前を付けて保存";
+          if (overwriteButton) overwriteButton.textContent = "上書き保存";
           importButton.textContent = "記事を開く";
           const layoutNewButton = document.createElement("button");
           layoutNewButton.type = "button";
@@ -10122,6 +10163,7 @@ ${bodyHtml}
           layoutSaveActions.append(activeLayoutLabel, layoutImportButton, layoutNewButton, layoutPresetListButton);
           layoutSaveSection.append(layoutSaveActions);
           previewHistoryActions?.prepend(importButton, exportButton);
+          if (overwriteButton) previewHistoryActions?.prepend(overwriteButton);
           saveDetails.append(layoutSaveSection);
           if (fileInput) document.body.appendChild(fileInput);
           document.body.appendChild(layoutFileInput);
@@ -10253,7 +10295,8 @@ ${bodyHtml}
 
     setupControlPages();
     document.querySelector(".preview .panel-caption")?.remove();
-    document.querySelector("#exportJsonButton").textContent = "記事を保存";
+    document.querySelector("#exportJsonButton").textContent = "名前を付けて保存";
+    document.querySelector("#overwriteJsonButton").textContent = "上書き保存";
     document.querySelector("#importJsonButton").textContent = "記事を開く";
     function syncCardSpacingLabels() {
       const cardGapLabel = elements.cardGap.closest(".field")?.querySelector("label");
@@ -11813,12 +11856,14 @@ ${bodyHtml}
           <div class="row">
             <div class="field"><label for="tocPreset">スタイル</label><select id="tocPreset"><option value="simple">シンプル</option><option value="accent">アクセントライン</option><option value="header">カラーヘッダー</option><option value="numbered">番号強調</option><option value="dark">ダーク</option><option value="minimal">ミニマル</option></select></div>
             <div class="field"><label for="tocTitle">タイトル</label><input id="tocTitle" type="text" value="目次" maxlength="40"></div>
+            <div class="field"><label class="check-item"><input id="tocBackLinks" type="checkbox">各見出しに「目次へ戻る」を表示</label></div>
           </div>
         </div>`;
       linkCardPropertyBlock.after(tocPropertyBlock);
       const tocControls = {
         preset: tocPropertyBlock.querySelector("#tocPreset"),
-        title: tocPropertyBlock.querySelector("#tocTitle")
+        title: tocPropertyBlock.querySelector("#tocTitle"),
+        backLinks: tocPropertyBlock.querySelector("#tocBackLinks")
       };
       componentPage.appendChild(section);
       componentPage.appendChild(dialog);
@@ -12318,6 +12363,7 @@ ${bodyHtml}
           tocControls.preset.value = ["simple", "accent", "header", "numbered", "dark", "minimal"].includes(component.dataset.tocPreset)
             ? component.dataset.tocPreset : "simple";
           tocControls.title.value = component.dataset.tocTitle || component.querySelector("[data-toc-title]")?.textContent || "目次";
+          tocControls.backLinks.checked = component.dataset.tocBackLinks === "true";
         }
         if (componentType === "accordion") {
           const summary = component.querySelector(":scope > [data-accordion-summary]");
@@ -13654,7 +13700,9 @@ ${bodyHtml}
           component.dataset.tocPreset = ["simple", "accent", "header", "numbered", "dark", "minimal"].includes(tocControls.preset.value)
             ? tocControls.preset.value : "simple";
           component.dataset.tocTitle = tocControls.title.value.trim() || "目次";
+          component.dataset.tocBackLinks = String(tocControls.backLinks.checked);
           normalizeTocDesign(component);
+          syncTocBackLinks(elements.preview);
         }
         if (type === "accordion") {
           applyAccordionSettings(component);
@@ -14346,7 +14394,7 @@ ${bodyHtml}
         input.addEventListener("input", applyComponentSpecificSettings);
         input.addEventListener("change", applyComponentSpecificSettings);
       });
-      [tocControls.preset, tocControls.title].forEach((input) => {
+      [tocControls.preset, tocControls.title, tocControls.backLinks].forEach((input) => {
         input.classList.add("component-property-input");
         input.addEventListener("input", applyComponentSpecificSettings);
         input.addEventListener("change", applyComponentSpecificSettings);
@@ -14454,7 +14502,7 @@ ${bodyHtml}
         video: `<div data-inserted-component="video" data-embed-url="" data-video-bottom-text="" data-video-bottom-html="" contenteditable="false" style="margin:14px 0;"><div data-embed-slot="true">${embedPlaceholderHtml("▶️", "動画のURL（YouTube・Vimeoなど）を設定してください")}</div></div>`,
         accordion: `<details data-inserted-component="accordion" data-accordion-preset="simple" data-accordion-icon="chevron" data-accordion-initially-open="false" data-accordion-summary-background="#f8fafc" data-accordion-content-background="#ffffff" data-accordion-border="#cbd5e1" data-accordion-accent="#2563eb" data-accordion-text-color="#172033" data-accordion-radius="8" data-accordion-padding="14" contenteditable="false" style="margin:14px 0;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;overflow:hidden;"><summary data-accordion-summary contenteditable="true" style="display:list-item;padding:14px;background:#f8fafc;color:#2563eb;font-weight:700;cursor:pointer;list-style-position:inside;"><span data-accordion-icon contenteditable="false" aria-hidden="true" style="display:none;"></span><span data-accordion-title contenteditable="true" style="margin-left:8px;color:#172033;">詳しい内容を見る</span></summary><div data-accordion-content contenteditable="true" style="padding:14px;color:#172033;line-height:1.8;background:#ffffff;border-top:1px solid #cbd5e1;">ここに折りたたむ内容を入力します。</div></details>`,
         linkCard: `<div data-inserted-component="linkCard" data-link-card-preset="standard" data-link-card-url="https://example.com" data-link-card-image-url="" data-link-card-show-image="false" data-link-card-new-tab="true" data-link-card-button-label="リンクを開く" data-link-card-accent="#2563eb" data-link-card-background="#ffffff" data-link-card-border="#cbd5e1" data-link-card-text-color="#172033" data-link-card-radius="10" data-link-card-width="66.7" data-link-card-height="94" contenteditable="false" style="width:66.7%;max-width:100%;box-sizing:border-box;margin:9px 0;"><a data-link-card-anchor href="https://example.com" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:stretch;gap:0;height:94px;box-sizing:border-box;color:#172033;text-decoration:none;border:1px solid #cbd5e1;border-radius:10px;background:#ffffff;overflow:hidden;"><span data-link-card-image-wrap contenteditable="false" style="display:none;flex:0 0 34%;height:100%;max-width:220px;background:#f1f5f9;"><img data-link-card-image alt="" style="display:block;width:100%;height:100%;min-height:0;max-height:100%;object-fit:cover;"></span><span data-link-card-body style="display:flex;flex:1 1 auto;min-width:0;box-sizing:border-box;flex-direction:column;justify-content:center;overflow:hidden;padding:6px 10px;"><strong data-link-card-title contenteditable="true" style="display:block;font-size:18px;line-height:1.2;">リンク先のタイトル</strong><span data-link-card-description contenteditable="true" style="display:block;margin-top:2px;color:#64748b;font-size:16px;line-height:1.2;">リンク先の説明を入力します。</span><span data-link-card-action contenteditable="false" style="display:inline-flex;align-self:flex-start;margin-top:4px;color:#2563eb;font-size:16px;font-weight:700;line-height:1.2;">リンクを開く →</span></span></a></div>`,
-        toc: `<nav data-inserted-component="toc" data-toc-preset="simple" data-toc-title="目次" aria-label="目次" style="margin:14px 0;padding:14px 16px;border:1px solid #d9dee8;border-radius:8px;background:#fbfcff;box-shadow:none;">
+        toc: `<nav data-inserted-component="toc" data-toc-preset="simple" data-toc-title="目次" data-toc-back-links="false" aria-label="目次" style="margin:14px 0;padding:14px 16px;border:1px solid #d9dee8;border-radius:8px;background:#fbfcff;box-shadow:none;">
           <div data-toc-header contenteditable="false" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px;padding:0;background:transparent;border-radius:0;">
             <strong data-toc-title contenteditable="false" style="font-size:15px;color:#172033;">目次</strong>
             <button type="button" data-toc-refresh style="cursor:pointer;padding:3px 10px;font-size:12px;border:1px solid #d9dee8;border-radius:5px;background:#ffffff;color:#64748b;" title="現在の見出しから一覧を作り直します（この中の手動編集は上書きされます）">見出しを取得</button>
@@ -14806,6 +14854,61 @@ ${bodyHtml}
             link.style.textUnderlineOffset = "3px";
           });
         }
+      });
+    }
+
+    function syncTocBackLinks(root = elements.preview) {
+      if (!root?.querySelectorAll) return;
+      const tocComponents = Array.from(root.querySelectorAll('[data-inserted-component="toc"]'));
+      const activeToc = tocComponents.find((component) => component.dataset.tocBackLinks === "true") || null;
+      const headings = Array.from(root.querySelectorAll(
+        '[data-inserted-component="heading"] h2, [data-inserted-component="heading"] h3, [data-inserted-component="heading"] h4'
+      ));
+      const removeBackLink = (heading) => {
+        heading.querySelectorAll(":scope > [data-toc-back-link]").forEach((link) => link.remove());
+        if (heading.dataset.tocBackLayout !== "true") return;
+        heading.style.removeProperty("display");
+        heading.style.removeProperty("align-items");
+        heading.style.removeProperty("gap");
+        heading.querySelector(":scope > [data-heading-prefix]")?.style.removeProperty("flex");
+        const content = heading.querySelector(":scope > [data-heading-content]");
+        content?.style.removeProperty("flex");
+        content?.style.removeProperty("min-width");
+        delete heading.dataset.tocBackLayout;
+      };
+      if (!activeToc) {
+        headings.forEach(removeBackLink);
+        return;
+      }
+
+      if (!activeToc.id) {
+        const existingIds = new Set(Array.from(root.querySelectorAll("[id]"), (element) => element.id));
+        let tocId = "p-player-toc";
+        let suffix = 2;
+        while (existingIds.has(tocId)) tocId = `p-player-toc-${suffix++}`;
+        activeToc.id = tocId;
+      }
+      headings.forEach((heading) => {
+        removeBackLink(heading);
+        const prefix = heading.querySelector(":scope > [data-heading-prefix]");
+        const content = heading.querySelector(":scope > [data-heading-content]");
+        if (!content) return;
+        heading.dataset.tocBackLayout = "true";
+        heading.style.display = "flex";
+        heading.style.alignItems = "center";
+        heading.style.gap = "8px";
+        if (prefix) prefix.style.flex = "0 0 auto";
+        content.style.flex = "1 1 auto";
+        content.style.minWidth = "0";
+        const link = document.createElement("a");
+        link.dataset.tocBackLink = "true";
+        link.contentEditable = "false";
+        link.href = `#${activeToc.id}`;
+        link.textContent = "↑ 目次";
+        link.setAttribute("aria-label", "目次に戻る");
+        link.title = "目次に戻る";
+        link.style.cssText = "display:inline-flex;align-items:center;flex:0 0 auto;margin-left:auto;padding:2px 7px;border:1px solid currentColor;border-radius:999px;color:inherit;font-family:inherit;font-size:11px;font-weight:600;line-height:1.4;text-decoration:none;white-space:nowrap;opacity:.78;";
+        heading.appendChild(link);
       });
     }
 
@@ -16855,7 +16958,7 @@ ${bodyHtml}
       });
     })();
 
-    document.querySelector("#exportJsonButton")?.addEventListener("click", async () => {
+    const createArticlePayloadBlob = () => {
       const payload = {
         version: 3,
         saveType: "full",
@@ -16864,8 +16967,58 @@ ${bodyHtml}
         previewHtml: getPersistablePreviewHtml(),
         articleHtml: getPersistablePreviewHtml()
       };
-      const text = JSON.stringify(payload, null, 2);
-      const blob = new Blob([text], { type: "application/json" });
+      return new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    };
+
+    const updateActiveArticleFile = ({ handle = null, path = "", writable = false } = {}) => {
+      activeArticleFileHandle = writable && handle?.createWritable ? handle : null;
+      activeArticleFilePath = path;
+      const pathLabel = document.querySelector("#activeArticleFilePath");
+      const overwriteButton = document.querySelector("#overwriteJsonButton");
+      if (pathLabel) {
+        pathLabel.hidden = !path;
+        pathLabel.textContent = path ? `開いている記事：${path}` : "";
+        pathLabel.title = path
+          ? `${path}${activeArticleFileHandle ? "（上書き保存できます）" : "（ブラウザの制限により、このファイルには直接上書きできません）"}`
+          : "";
+      }
+      if (overwriteButton) {
+        overwriteButton.disabled = !activeArticleFileHandle;
+        overwriteButton.title = activeArticleFileHandle
+          ? `${path || handle?.name || "開いている記事"} に上書き保存`
+          : "書き込み可能な記事JSONを開くと利用できます";
+      }
+    };
+
+    const articleFileDisplayPath = (file, handle = null) => (
+      (typeof file?.path === "string" && file.path)
+      || file?.webkitRelativePath
+      || handle?.name
+      || file?.name
+      || ""
+    );
+
+    async function writeArticleFile(handle) {
+      const writable = await handle.createWritable();
+      await writable.write(createArticlePayloadBlob());
+      await writable.close();
+    }
+
+    updateActiveArticleFile();
+
+    document.querySelector("#overwriteJsonButton")?.addEventListener("click", async () => {
+      if (!activeArticleFileHandle) return;
+      try {
+        await writeArticleFile(activeArticleFileHandle);
+        setStatus(`「${activeArticleFilePath || activeArticleFileHandle.name}」に上書き保存しました`);
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        setStatus("上書き保存できませんでした");
+      }
+    });
+
+    document.querySelector("#exportJsonButton")?.addEventListener("click", async () => {
+      const blob = createArticlePayloadBlob();
       const suggestedName = "protopedia-layout.json";
       if (typeof window.showSaveFilePicker === "function") {
         try {
@@ -16873,10 +17026,13 @@ ${bodyHtml}
             suggestedName,
             types: [{ description: "JSON", accept: { "application/json": [".json"] } }]
           });
-          const writable = await handle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          setStatus("保存しました");
+          await writeArticleFile(handle);
+          updateActiveArticleFile({
+            handle,
+            path: handle.name || suggestedName,
+            writable: true
+          });
+          setStatus(`「${handle.name || suggestedName}」に名前を付けて保存しました`);
           return;
         } catch (error) {
           if (error?.name === "AbortError") return;
@@ -16892,7 +17048,7 @@ ${bodyHtml}
         link.remove();
         URL.revokeObjectURL(url);
       }, 1000);
-      setStatus("保存しました");
+      setStatus("名前を付けて保存しました");
     });
 
     function updateCustomFeatureAvailability() {
@@ -17123,8 +17279,50 @@ ${bodyHtml}
       }
     });
 
+    const applyArticlePayload = (payload, { handle = null, file = null } = {}) => {
+      const settings = payload.settings || payload;
+      const articleHtml = typeof payload.articleHtml === "string" ? payload.articleHtml : payload.previewHtml;
+      const isFullSave = payload.saveType === "full"
+        || (!payload.saveType && typeof articleHtml === "string");
+      if (isFullSave) capturePreviewEdits();
+      applySettings(settings, { renderPreview: false });
+      formattedPreviewHtml = isFullSave && typeof articleHtml === "string"
+        ? articleHtml
+        : formattedPreviewHtml;
+      if (isFullSave) {
+        render({ forceReset: true });
+        capturePreviewEdits();
+      }
+      updateActiveArticleFile({
+        handle: isFullSave ? handle : null,
+        path: articleFileDisplayPath(file, handle),
+        writable: isFullSave && !!handle
+      });
+      setStatus(isFullSave ? "記事JSONを読み込みました" : "JSONを読み込みました（記事データなし）");
+    };
+
     const jsonFileInput = document.querySelector("#jsonFileInput");
-    document.querySelector("#importJsonButton").addEventListener("click", () => jsonFileInput.click());
+    document.querySelector("#importJsonButton").addEventListener("click", async () => {
+      if (typeof window.showOpenFilePicker === "function") {
+        try {
+          const [handle] = await window.showOpenFilePicker({
+            multiple: false,
+            types: [{ description: "記事JSON", accept: { "application/json": [".json"] } }]
+          });
+          if (!handle) return;
+          const file = await handle.getFile();
+          applyArticlePayload(JSON.parse(await file.text()), { handle, file });
+          return;
+        } catch (error) {
+          if (error?.name === "AbortError") return;
+          if (error instanceof SyntaxError) {
+            setStatus("JSONを読み込めませんでした");
+            return;
+          }
+        }
+      }
+      jsonFileInput.click();
+    });
     jsonFileInput.addEventListener("change", () => {
       const file = jsonFileInput.files?.[0];
       if (!file) return;
@@ -17132,20 +17330,7 @@ ${bodyHtml}
       reader.addEventListener("load", () => {
         try {
           const payload = JSON.parse(String(reader.result || "{}"));
-          const settings = payload.settings || payload;
-          const articleHtml = typeof payload.articleHtml === "string" ? payload.articleHtml : payload.previewHtml;
-          const isFullSave = payload.saveType === "full"
-            || (!payload.saveType && typeof articleHtml === "string");
-          if (isFullSave) capturePreviewEdits();
-          applySettings(settings, { renderPreview: false });
-          formattedPreviewHtml = isFullSave && typeof articleHtml === "string"
-            ? articleHtml
-            : formattedPreviewHtml;
-          if (isFullSave) {
-            render({ forceReset: true });
-            capturePreviewEdits();
-          }
-          setStatus("JSONを読み込みました");
+          applyArticlePayload(payload, { file });
         } catch {
           setStatus("JSONを読み込めませんでした");
         } finally {
@@ -17242,6 +17427,7 @@ ${bodyHtml}
     document.querySelector("#copyOutputButton")?.addEventListener("click", copyGeneratedHtml);
 
     document.querySelector("#resetButton").addEventListener("click", () => {
+      updateActiveArticleFile();
       resetFormattedPreview();
       elements.preset.value = defaults.preset;
       elements.blockType.value = defaults.blockType;
@@ -17837,6 +18023,7 @@ ${bodyHtml}
       const articleButtons = [
         document.querySelector("#resetButton"),
         document.querySelector("#importJsonButton"),
+        document.querySelector("#overwriteJsonButton"),
         document.querySelector("#exportJsonButton"),
         document.querySelector("#importMarkdownButton"),
         document.querySelector("#autosaveHistoryButton")
@@ -17862,8 +18049,8 @@ ${bodyHtml}
       articleActions.append(...articleButtons);
       designActions.append(...designButtons);
       if (activeSettingLabel) currentSettingSlot.appendChild(activeSettingLabel);
-      const saveButton = document.querySelector("#exportJsonButton");
-      if (saveButton) saveButton.classList.add("file-menu-save");
+      document.querySelectorAll("#overwriteJsonButton, #exportJsonButton")
+        .forEach((button) => button.classList.add("file-menu-save"));
 
       document.querySelector(".layout-save-panel")?.remove();
       previewActions.prepend(fileMenu);
