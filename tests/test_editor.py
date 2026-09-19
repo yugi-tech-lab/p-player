@@ -34,6 +34,30 @@ class EditorTests(unittest.TestCase):
     def test_startup(self):
         self.assertGreater(self.page.evaluate("elements.preview.children.length"), 0)
 
+    def test_character_count_at_right_of_format_row(self):
+        for width in (1440, 600):
+            self.page.set_viewport_size({"width": width, "height": 900})
+            result = self.page.evaluate("""() => {
+                const counter = document.querySelector('#characterCount');
+                const controls = document.querySelector('.selection-controls');
+                const format = controls.querySelector('.selection-format-row-content');
+                const rect = counter.getBoundingClientRect();
+                const row = controls.getBoundingClientRect();
+                const content = format.getBoundingClientRect();
+                elements.preview.innerHTML = '<p>あいう ABC</p>';
+                updateCharacterCount();
+                return {parent: counter.parentElement === controls,
+                    right: Math.abs(rect.right - row.right),
+                    sameRow: rect.top < content.bottom && rect.bottom > content.top,
+                    noOverlap: rect.left >= content.right,
+                    text: counter.textContent};
+            }""")
+            self.assertTrue(result['parent'])
+            self.assertLess(result['right'], 2)
+            self.assertTrue(result['sameRow'])
+            self.assertTrue(result['noOverlap'])
+            self.assertEqual(result['text'], '文字数 6')
+
     def test_shape_settings_render_and_survive_html_import(self):
         result = self.page.evaluate("""() => {
             elements.preview.replaceChildren(); capturePreviewEdits();
@@ -343,8 +367,8 @@ class EditorTests(unittest.TestCase):
         self.page.wait_for_function("!document.querySelector('#overwriteJsonButton').disabled")
         self.assertIn("opened-article.json", self.page.locator('#activeArticleFilePath').text_content())
         self.assertEqual(
-            self.page.evaluate("document.querySelector('#activeArticleFilePath').nextElementSibling.id"),
-            "characterCount",
+            self.page.evaluate("document.querySelector('#activeArticleFilePath').parentElement.className"),
+            "preview-heading-row",
         )
         self.assertEqual(self.page.evaluate("elements.preview.textContent"), "opened article")
 
