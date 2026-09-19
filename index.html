@@ -4635,6 +4635,27 @@
       }
     }
 
+    /* Keep only the editor controls in an independent desktop scroll pane. */
+    @media (min-width: 861px) {
+      .layout > .controls {
+        position: sticky;
+        top: 12px;
+        align-self: start;
+        max-height: var(--controls-scroll-height, calc(100dvh - 24px));
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
+        scrollbar-gutter: stable;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .layout > .controls {
+        position: static;
+        max-height: none;
+        overflow: visible;
+      }
+    }
+
   </style>
 </head>
 <body>
@@ -5436,7 +5457,7 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
         </div>
 
         <div class="field">
-          <label for="imagePath">画像URLまたはMarkdown</label>
+          <label for="imagePath">画像URL</label>
           <input id="imagePath" type="text" value="">
         </div>
 
@@ -5446,7 +5467,7 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
         </div>
 
         <div class="field type-option-image-pair is-hidden">
-          <label for="imagePath2">2枚目の画像URLまたはMarkdown</label>
+          <label for="imagePath2">2枚目の画像URL</label>
           <input id="imagePath2" type="text" value="">
         </div>
 
@@ -11238,7 +11259,7 @@ ${bodyHtml}
       const componentImagePairCount = imagePairCountField.querySelector("#componentImagePairCount");
       const imagePairPath3Field = document.createElement("div");
       imagePairPath3Field.className = "field image-pair-third-field";
-      imagePairPath3Field.innerHTML = `<label for="componentImagePath3">3枚目の画像URLまたはMarkdown</label><input id="componentImagePath3" type="text" value="">`;
+      imagePairPath3Field.innerHTML = `<label for="componentImagePath3">3枚目の画像URL</label><input id="componentImagePath3" type="text" value="">`;
       imagePairLinkField.after(imagePairPath3Field);
       const componentImagePath3 = imagePairPath3Field.querySelector("#componentImagePath3");
       const imagePairLink3Field = document.createElement("div");
@@ -11652,7 +11673,7 @@ ${bodyHtml}
             <div class="field" data-xpost-textsize-field style="display:none;"><label for="xpostSideTextSize">文字サイズ</label><div class="unit-input"><input id="xpostSideTextSize" type="number" min="8" max="72" value="16"><span>px</span></div></div>
             <div class="field" data-xpost-textcolor-field style="display:none;"><label for="xpostSideTextColor">文字色</label><input id="xpostSideTextColor" type="color" value="#172033"></div>
             <div class="field" data-xpost-textreset-field style="display:none;"><label>一括操作</label><button class="secondary" id="xpostSideTextReset" type="button">装飾をリセット</button></div>
-            <div class="field" data-xpost-sideimage-field style="display:none;"><label for="xpostSideImageUrl">画像URLまたはMarkdown</label><input id="xpostSideImageUrl" type="text" placeholder="https://... または ![](URL)"></div>
+            <div class="field" data-xpost-sideimage-field style="display:none;"><label for="xpostSideImageUrl">画像URL</label><input id="xpostSideImageUrl" type="text" placeholder="https://... または ![](URL)"></div>
           </div>
         </div>`;
       codePropertyBlock.after(xpostPropertyBlock);
@@ -16167,6 +16188,66 @@ ${bodyHtml}
       savedPreviewRange = range.cloneRange();
     }
 
+    function deleteCrossCellTableSelection() {
+      const selection = window.getSelection();
+      if (!selection.rangeCount || selection.isCollapsed) return false;
+      const selectedRange = selection.getRangeAt(0);
+      const boundaryCell = (node) => {
+        const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+        return element?.closest?.("td, th") || null;
+      };
+      let startCell = boundaryCell(selectedRange.startContainer);
+      let endCell = boundaryCell(selectedRange.endContainer);
+      const candidateTable = startCell?.closest("table") || endCell?.closest("table");
+      if (!candidateTable || !elements.preview.contains(candidateTable)) return false;
+      const cells = Array.from(candidateTable.querySelectorAll("th, td"))
+        .filter((cell) => cell.closest("table") === candidateTable && selectedRange.intersectsNode(cell));
+      startCell ||= cells[0] || null;
+      endCell ||= cells[cells.length - 1] || null;
+      if (!startCell || !endCell || startCell === endCell
+        || startCell.closest("table") !== candidateTable
+        || endCell.closest("table") !== candidateTable) return false;
+
+      const tableCells = Array.from(candidateTable.querySelectorAll("th, td"))
+        .filter((cell) => cell.closest("table") === candidateTable);
+      const startIndex = tableCells.indexOf(startCell);
+      const endIndex = tableCells.indexOf(endCell);
+      if (startIndex < 0 || endIndex <= startIndex) return false;
+      const caretOffset = startCell.contains(selectedRange.startContainer)
+        ? getCaretTextOffset(startCell, selectedRange.startContainer, selectedRange.startOffset)
+        : 0;
+
+      const startDeletion = document.createRange();
+      if (startCell.contains(selectedRange.startContainer)) {
+        startDeletion.setStart(selectedRange.startContainer, selectedRange.startOffset);
+      } else {
+        startDeletion.setStart(startCell, 0);
+      }
+      startDeletion.setEnd(startCell, startCell.childNodes.length);
+
+      const endDeletion = document.createRange();
+      endDeletion.setStart(endCell, 0);
+      if (endCell.contains(selectedRange.endContainer)) {
+        endDeletion.setEnd(selectedRange.endContainer, selectedRange.endOffset);
+      } else {
+        endDeletion.setEnd(endCell, endCell.childNodes.length);
+      }
+
+      endDeletion.deleteContents();
+      tableCells.slice(startIndex + 1, endIndex).forEach((cell) => cell.replaceChildren());
+      startDeletion.deleteContents();
+      placeCaretInTableCell(startCell, caretOffset);
+      activePreviewTable = candidateTable;
+      activeInsertedComponent = candidateTable.closest("[data-inserted-component]") || candidateTable;
+      capturePreviewEdits();
+      return true;
+    }
+
+    elements.preview.addEventListener("beforeinput", (event) => {
+      if (!event.inputType?.startsWith("delete")) return;
+      if (deleteCrossCellTableSelection()) event.preventDefault();
+    });
+
     elements.preview.addEventListener("keydown", (event) => {
       if (!["ArrowUp", "ArrowDown"].includes(event.key)
         || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
@@ -17245,6 +17326,32 @@ ${bodyHtml}
           event.preventDefault();
         }
       });
+    })();
+
+    (function setupControlsScrollPane() {
+      const controlsPanel = document.querySelector(".layout > .controls");
+      const desktopLayout = window.matchMedia("(min-width: 861px)");
+      if (!controlsPanel) return;
+      let frame = 0;
+      const updateHeight = () => {
+        frame = 0;
+        if (!desktopLayout.matches) {
+          controlsPanel.style.removeProperty("--controls-scroll-height");
+          return;
+        }
+        const top = Math.max(12, controlsPanel.getBoundingClientRect().top);
+        controlsPanel.style.setProperty(
+          "--controls-scroll-height",
+          `${Math.max(240, window.innerHeight - top - 12)}px`
+        );
+      };
+      const scheduleUpdate = () => {
+        if (!frame) frame = requestAnimationFrame(updateHeight);
+      };
+      updateHeight();
+      window.addEventListener("resize", scheduleUpdate);
+      window.addEventListener("scroll", scheduleUpdate, { passive: true });
+      desktopLayout.addEventListener?.("change", scheduleUpdate);
     })();
 
     (function setupPresetGallery() {

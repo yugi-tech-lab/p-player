@@ -34,6 +34,52 @@ class EditorTests(unittest.TestCase):
     def test_startup(self):
         self.assertGreater(self.page.evaluate("elements.preview.children.length"), 0)
 
+    def test_only_desktop_controls_use_an_independent_scroll_pane(self):
+        self.page.set_viewport_size({"width": 1280, "height": 720})
+        before = self.page.evaluate("""() => {
+            const controls = document.querySelector('.controls');
+            const previewColumn = document.querySelector('.layout > div:last-child');
+            return {
+              controlsOverflow: getComputedStyle(controls).overflowY,
+              previewOverflow: getComputedStyle(previewColumn).overflowY,
+              controlsCanScroll: controls.scrollHeight > controls.clientHeight,
+              windowY: window.scrollY
+            };
+        }""")
+        self.page.locator(".controls").hover()
+        self.page.mouse.wheel(0, 500)
+        self.page.wait_for_timeout(100)
+        after = self.page.evaluate("""() => ({
+            controlsY: document.querySelector('.controls').scrollTop,
+            previewY: document.querySelector('.layout > div:last-child').scrollTop,
+            windowY: window.scrollY
+        })""")
+        self.assertEqual(before["controlsOverflow"], "auto")
+        self.assertEqual(before["previewOverflow"], "visible")
+        self.assertTrue(before["controlsCanScroll"])
+        self.assertEqual(before["windowY"], 0)
+        self.assertGreater(after["controlsY"], 0)
+        self.assertEqual(after["previewY"], 0)
+        self.assertEqual(after["windowY"], 0)
+
+        self.page.locator(".preview").hover()
+        self.page.mouse.wheel(0, 500)
+        self.page.wait_for_timeout(100)
+        preview_scroll = self.page.evaluate("""() => ({
+            previewY: document.querySelector('.layout > div:last-child').scrollTop,
+            windowY: window.scrollY
+        })""")
+        self.assertEqual(preview_scroll["previewY"], 0)
+        self.assertGreater(preview_scroll["windowY"], 0)
+
+        self.page.set_viewport_size({"width": 800, "height": 720})
+        mobile = self.page.evaluate("""() => ({
+            bodyOverflow: getComputedStyle(document.body).overflowY,
+            controlsOverflow: getComputedStyle(document.querySelector('.controls')).overflowY
+        })""")
+        self.assertEqual(mobile["bodyOverflow"], "visible")
+        self.assertEqual(mobile["controlsOverflow"], "visible")
+
     def test_unicode_search_offsets(self):
         result = self.page.evaluate("""() => {
             elements.preview.innerHTML = '<p>\\u0130X</p>';
@@ -215,6 +261,45 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["secondCaption"], "second caption")
         self.assertEqual(result["reducedCount"], 2)
         self.assertEqual(result["expandedCount"], 3)
+
+    def test_deleting_text_across_table_cells_preserves_table_structure(self):
+        self.page.evaluate("""() => {
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedTableHtml();
+            const table = holder.firstElementChild;
+            elements.preview.replaceChildren(table);
+            const cells = Array.from(table.rows[0].cells);
+            cells[0].textContent = 'alpha';
+            cells[1].textContent = 'beta';
+            cells[2].textContent = 'gamma';
+            const range = document.createRange();
+            range.setStart(cells[0].firstChild, 2);
+            range.setEnd(cells[2].firstChild, 2);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            cells[0].focus();
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }""")
+        self.page.keyboard.press("Backspace")
+        result = self.page.evaluate("""() => {
+            const table = elements.preview.querySelector('table');
+            return {
+              rowCount: table.rows.length,
+              columnCounts: Array.from(table.rows).map(row => row.cells.length),
+              firstRowTexts: Array.from(table.rows[0].cells).map(cell => cell.textContent),
+              firstRowTags: Array.from(table.rows[0].cells).map(cell => cell.tagName),
+              caretCellIndex: Array.from(table.rows[0].cells).indexOf(
+                window.getSelection().focusNode?.parentElement?.closest('th, td')
+              )
+            };
+        }""")
+        self.assertEqual(result["rowCount"], 3)
+        self.assertEqual(result["columnCounts"], [3, 3, 3])
+        self.assertEqual(result["firstRowTexts"], ["al", "", "mma"])
+        self.assertEqual(result["firstRowTags"], ["TH", "TH", "TH"])
+        self.assertEqual(result["caretCellIndex"], 0)
 
     def test_obfuscated_script_url_is_removed(self):
         result = self.page.evaluate("""() => {
