@@ -34,6 +34,38 @@ class EditorTests(unittest.TestCase):
     def test_startup(self):
         self.assertGreater(self.page.evaluate("elements.preview.children.length"), 0)
 
+    def test_image_text_bubble_tail_is_visible_on_first_enable(self):
+        for side in ('left', 'right'):
+            for existing_tail in (False, True):
+                result = self.page.evaluate("""({side, existingTail}) => {
+                    elements.preview.innerHTML = insertedComponentHtml('imageText');
+                    const component = elements.preview.firstElementChild;
+                    component.style.flexDirection = side === 'right' ? 'row-reverse' : 'row';
+                    if (existingTail) component.children[1].insertAdjacentHTML('afterbegin',
+                        '<span data-speech-tail="true" contenteditable="false"></span>');
+                    activeInsertedComponent = component;
+                    document.querySelector('.inserted-component-properties')._sync();
+                    document.querySelector('#componentSpeechBubble').click();
+                    const tail = component.querySelector('[data-speech-tail]');
+                    const rect = tail.getBoundingClientRect();
+                    const initial = tail.style.cssText;
+                    const border = getComputedStyle(tail).borderLeftWidth;
+                    elements.speechBubbleTailAngle.dispatchEvent(new Event('input', {bubbles:true}));
+                    const unchanged = initial === tail.style.cssText;
+                    cleanupEmptyFormattingSpans();
+                    const preserved = component.contains(tail);
+                    document.querySelector('#componentSpeechBubble').click();
+                    const removed = !component.querySelector('[data-speech-tail]');
+                    document.querySelector('#componentSpeechBubble').click();
+                    return {width: rect.width, height: rect.height, border, unchanged, preserved, removed,
+                        restored: !!component.querySelector('[data-speech-tail]')};
+                }""", {'side': side, 'existingTail': existing_tail})
+                self.assertGreater(result['width'], 0)
+                self.assertGreater(result['height'], 0)
+                self.assertEqual(result['border'], '2px')
+                for key in ('unchanged', 'preserved', 'removed', 'restored'):
+                    self.assertTrue(result[key], key)
+
     def test_character_count_at_right_of_format_row(self):
         for width in (1440, 600):
             self.page.set_viewport_size({"width": width, "height": 900})

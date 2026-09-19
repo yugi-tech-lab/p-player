@@ -6673,7 +6673,7 @@ ${linkedImage}
       if (!imageBlock) return `<div>${text}</div>`;
       const textBlock = elements.includeSpeechBubble.checked
         ? `<div style="position:relative;display:flex;align-items:${bubbleVertical};align-self:${textVertical};justify-content:${bubbleHorizontal};flex:1;min-width:0;min-height:120px;background:#ffffff;border:2px solid #d9dee8;border-radius:${bubbleRadius};padding:18px 20px;box-shadow:0 6px 16px rgba(17,24,39,0.1);${bubbleShape === "burst" ? "clip-path:polygon(0 12%,8% 4%,16% 8%,25% 0,34% 7%,44% 2%,54% 8%,64% 0,74% 7%,84% 3%,94% 10%,100% 5%,96% 20%,100% 32%,96% 44%,100% 56%,95% 68%,100% 80%,92% 92%,80% 88%,70% 100%,58% 93%,47% 100%,36% 93%,25% 100%,15% 92%,5% 96%,8% 82%,0 70%,5% 58%,0 45%,5% 32%;" : ""}">
-<span style="position:absolute;${tailCross}${tailSide};width:${tailSize}px;height:${tailSize}px;background:#ffffff;border-left:2px solid #d9dee8;border-bottom:2px solid #d9dee8;transform:rotate(${45 + tailAngle}deg);"></span>
+<span data-speech-tail="true" contenteditable="false" style="position:absolute;${tailCross}${tailSide};width:${tailSize}px;height:${tailSize}px;background:#ffffff;border-left:2px solid #d9dee8;border-bottom:2px solid #d9dee8;transform:rotate(${(position === "row" ? 45 : 225) + tailAngle}deg);"></span>
 <div data-side-content-slot="true" style="position:relative;width:100%;min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word;white-space:normal;">${text}</div>
 </div>`
         : `<div data-side-content-slot="true" style="flex:1 1 0%;min-width:0;max-width:100%;align-self:${textVertical};overflow-wrap:anywhere;word-break:break-word;white-space:normal;">${text}</div>`;
@@ -12682,10 +12682,12 @@ ${bodyHtml}
             const tail = document.createElement("span");
             tail.dataset.speechTail = "true";
             tail.setAttribute("contenteditable", "false");
-            tail.style.cssText = "position:absolute;top:50%;margin-top:-8px;width:16px;height:16px;background:#ffffff;border-left:2px solid #d9dee8;border-bottom:2px solid #d9dee8;transform:rotate(45deg);";
             textBlock.prepend(tail);
           }
           const tail = textBlock.querySelector("[data-speech-tail]");
+          // Initialize on every application, including existing/imported tails.
+          // The first enable must produce the same visual as an angle edit.
+          tail.style.cssText = "display:block;position:absolute;background:#ffffff;border-left:2px solid #d9dee8;border-bottom:2px solid #d9dee8;pointer-events:none;";
           const imageOnLeft = component.style.flexDirection !== "row-reverse";
           const tailSize = Math.max(6, Math.min(36, Number(elements.speechBubbleTailSize.value) || 16));
           const tailAngle = Math.max(-45, Math.min(45, Number(elements.speechBubbleTailAngle.value) || 0));
