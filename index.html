@@ -16039,6 +16039,7 @@ ${bodyHtml}
       const table = getPreviewTable();
       if (!table) return;
       mutator(table);
+      selectedTableCells.forEach((cell) => cell.classList.remove("table-cell-selected"));
       selectedTableCells = [];
       syncTableColumnsAfterStructureChange(table);
       setupTableColumnResizeFor(table);
@@ -16419,9 +16420,73 @@ ${bodyHtml}
         }
       });
     });
+    function getTableOperationCells(table) {
+      const selected = selectedTableCells.filter((cell) => (
+        cell?.isConnected && cell.closest("table") === table
+      ));
+      if (selected.length) return selected;
+      const caretCell = getPreviewTableCaretCell(table);
+      return caretCell ? [caretCell] : [];
+    }
+
+    function deleteTableRowAt(table, rowIndex) {
+      const row = table.rows[rowIndex];
+      if (!row || table.rows.length <= 1) return false;
+      const grid = getTableCellGrid(table);
+      const rowGrid = grid[rowIndex] || [];
+      const cellsFromAbove = [...new Set(rowGrid)].filter((cell) => (
+        cell?.parentElement?.rowIndex < rowIndex && (cell.rowSpan || 1) > 1
+      ));
+      cellsFromAbove.forEach((cell) => { cell.rowSpan = Math.max(1, cell.rowSpan - 1); });
+
+      const destinationRow = table.rows[rowIndex + 1];
+      if (destinationRow) {
+        Array.from(row.cells)
+          .filter((cell) => (cell.rowSpan || 1) > 1)
+          .map((cell) => ({ cell, columnIndex: rowGrid.indexOf(cell) }))
+          .sort((a, b) => a.columnIndex - b.columnIndex)
+          .forEach(({ cell, columnIndex }) => {
+            cell.rowSpan = Math.max(1, cell.rowSpan - 1);
+            const before = Array.from(destinationRow.cells).find((candidate) => {
+              const candidateColumn = (grid[rowIndex + 1] || []).indexOf(candidate);
+              return candidateColumn >= 0 && candidateColumn > columnIndex;
+            });
+            destinationRow.insertBefore(cell, before || null);
+          });
+      }
+      table.deleteRow(rowIndex);
+      return true;
+    }
+
+    function deleteTableColumnAt(table, columnIndex) {
+      const grid = getTableCellGrid(table);
+      const columnCount = Math.max(0, ...grid.map((row) => row.length));
+      if (columnCount <= 1 || columnIndex < 0 || columnIndex >= columnCount) return false;
+      const cells = [...new Set(grid.map((row) => row[columnIndex]).filter(Boolean))];
+      cells.forEach((cell) => {
+        if ((cell.colSpan || 1) > 1) cell.colSpan -= 1;
+        else cell.remove();
+      });
+      return true;
+    }
+
     document.querySelector("#tableDeleteRowButton").addEventListener("click", () => {
       updatePreviewTable((table) => {
-        if (table.rows.length > 1) table.deleteRow(-1);
+        const cells = getTableOperationCells(table);
+        if (!cells.length) {
+          setStatus("削除する行のセルにカーソルを置くか、セルを選択してください");
+          return;
+        }
+        const rowIndexes = [...new Set(cells.map((cell) => cell.parentElement?.rowIndex))]
+          .filter((index) => Number.isInteger(index) && index >= 0)
+          .sort((a, b) => b - a)
+          .slice(0, Math.max(0, table.rows.length - 1));
+        const deletedCount = rowIndexes.reduce(
+          (count, rowIndex) => count + Number(deleteTableRowAt(table, rowIndex)), 0
+        );
+        setStatus(deletedCount
+          ? `${deletedCount}行を削除しました`
+          : "テーブルには最低1行必要です");
       });
     });
     document.querySelector("#tableAddColumnButton").addEventListener("click", () => {
@@ -16445,9 +16510,26 @@ ${bodyHtml}
     });
     document.querySelector("#tableDeleteColumnButton").addEventListener("click", () => {
       updatePreviewTable((table) => {
-        Array.from(table.rows).forEach((row) => {
-          if (row.cells.length > 1) row.deleteCell(-1);
-        });
+        const cells = getTableOperationCells(table);
+        if (!cells.length) {
+          setStatus("削除する列のセルにカーソルを置くか、セルを選択してください");
+          return;
+        }
+        const grid = getTableCellGrid(table);
+        const columnCount = Math.max(0, ...grid.map((row) => row.length));
+        const columnIndexes = [...new Set(cells.map((cell) => {
+          const rowIndex = cell.parentElement?.rowIndex;
+          return rowIndex >= 0 ? grid[rowIndex]?.indexOf(cell) : -1;
+        }))]
+          .filter((index) => index >= 0)
+          .sort((a, b) => b - a)
+          .slice(0, Math.max(0, columnCount - 1));
+        const deletedCount = columnIndexes.reduce(
+          (count, columnIndex) => count + Number(deleteTableColumnAt(table, columnIndex)), 0
+        );
+        setStatus(deletedCount
+          ? `${deletedCount}列を削除しました`
+          : "テーブルには最低1列必要です");
       });
     });
     document.querySelector("#tableMergeCellsButton").addEventListener("click", () => {

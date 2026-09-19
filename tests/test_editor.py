@@ -301,6 +301,63 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["firstRowTags"], ["TH", "TH", "TH"])
         self.assertEqual(result["caretCellIndex"], 0)
 
+    def test_table_row_and_column_delete_use_caret_or_selected_cells(self):
+        result = self.page.evaluate("""() => {
+            const makeTable = () => {
+              const holder = document.createElement('div');
+              holder.innerHTML = insertedTableHtml();
+              const table = holder.firstElementChild;
+              Array.from(table.rows).forEach((row, rowIndex) => {
+                Array.from(row.cells).forEach((cell, columnIndex) => {
+                  cell.textContent = `${rowIndex}-${columnIndex}`;
+                });
+              });
+              elements.preview.replaceChildren(table);
+              activePreviewTable = table;
+              activeInsertedComponent = table;
+              selectedTableCells = [];
+              return table;
+            };
+            const setCaret = (cell) => {
+              const range = document.createRange();
+              range.selectNodeContents(cell);
+              range.collapse(true);
+              const selection = window.getSelection();
+              selection.removeAllRanges();
+              selection.addRange(range);
+              savedPreviewRange = range.cloneRange();
+            };
+
+            let table = makeTable();
+            setCaret(table.rows[1].cells[1]);
+            document.querySelector('#tableDeleteRowButton').click();
+            const caretRows = Array.from(table.rows, row => row.cells[0].textContent);
+
+            table = makeTable();
+            setCaret(table.rows[1].cells[1]);
+            document.querySelector('#tableDeleteColumnButton').click();
+            const caretColumns = Array.from(table.rows[0].cells, cell => cell.textContent);
+
+            table = makeTable();
+            savedPreviewRange = null;
+            selectedTableCells = [table.rows[0].cells[0], table.rows[2].cells[1]];
+            selectedTableCells.forEach(cell => cell.classList.add('table-cell-selected'));
+            document.querySelector('#tableDeleteRowButton').click();
+            const selectedRows = Array.from(table.rows, row => row.cells[0].textContent);
+
+            table = makeTable();
+            savedPreviewRange = null;
+            selectedTableCells = [table.rows[0].cells[0], table.rows[2].cells[2]];
+            selectedTableCells.forEach(cell => cell.classList.add('table-cell-selected'));
+            document.querySelector('#tableDeleteColumnButton').click();
+            const selectedColumns = Array.from(table.rows[0].cells, cell => cell.textContent);
+            return {caretRows, caretColumns, selectedRows, selectedColumns};
+        }""")
+        self.assertEqual(result["caretRows"], ["0-0", "2-0"])
+        self.assertEqual(result["caretColumns"], ["0-0", "0-2"])
+        self.assertEqual(result["selectedRows"], ["1-0"])
+        self.assertEqual(result["selectedColumns"], ["0-1"])
+
     def test_obfuscated_script_url_is_removed(self):
         result = self.page.evaluate("""() => {
             return sanitizeMarkdownHtml('<a href="java&#10;script:alert(1)">link</a>');
