@@ -364,6 +364,21 @@ class EditorTests(unittest.TestCase):
         }""")
         self.assertEqual(result, "link")
 
+    def test_copy_boundary_comments_are_stamped_safely(self):
+        result = self.page.evaluate("""() => ({
+            stamped: stampBoundaryCommentsForCopy(
+              '<!-- ーーーーーーー p-player 開始：コピー時に日時を記録 ーーーーーーー -->\\n'
+              + '<p>本文</p>\\n'
+              + '<!-- ーーーーーーー p-player 終了:copy time ーーーーーーー -->\\n'
+              + '<!-- keep this comment -->'
+            ),
+            nullInput: stampBoundaryCommentsForCopy(null)
+        })""")
+        self.assertIn("p-player 開始：コピー日時", result["stamped"])
+        self.assertIn("p-player 終了：コピー日時", result["stamped"])
+        self.assertIn("<!-- keep this comment -->", result["stamped"])
+        self.assertEqual(result["nullInput"], "")
+
     def test_markdown_and_csv(self):
         result = self.page.evaluate("""() => {
             importMarkdownText('# Heading\\n\\nBody **bold**\\n\\n- one\\n- two\\n\\n| a | b |\\n| - | - |\\n| 1 | 2 |\\n\\n```js\\nconst x = 1;\\n```', 'test', {clearPreview:true});

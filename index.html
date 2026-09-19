@@ -17197,8 +17197,11 @@ ${bodyHtml}
       const now = new Date();
       const pad = (value) => String(value).padStart(2, "0");
       const copiedAt = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-      return html.replace(/<!--\s*ー+\s*p-player\s+(開始|終了)：[^\r\n]*?ー+\s*-->/g, (_comment, boundaryType) => {
-        return `<!-- ーーーーーーー p-player ${boundaryType}：コピー日時 ${copiedAt} ーーーーーーー -->`;
+      const source = String(html ?? "");
+      return source.replace(/<!--([\s\S]*?)-->/g, (comment, content) => {
+        const boundary = content.match(/p-player\s+(開始|終了)\s*[:：]/);
+        if (!boundary) return comment;
+        return `<!-- ーーーーーーー p-player ${boundary[1]}：コピー日時 ${copiedAt} ーーーーーーー -->`;
       });
     }
 
