@@ -34,6 +34,57 @@ class EditorTests(unittest.TestCase):
     def test_startup(self):
         self.assertGreater(self.page.evaluate("elements.preview.children.length"), 0)
 
+    def test_shape_settings_render_and_survive_html_import(self):
+        result = self.page.evaluate("""() => {
+            elements.preview.replaceChildren(); capturePreviewEdits();
+            activeInsertedComponent = null; savedPreviewRange = null;
+            insertComponentAtSelection('shape');
+            const shape = elements.preview.querySelector('[data-inserted-component="shape"]');
+            activeInsertedComponent = shape;
+            document.querySelector('.inserted-component-properties')._sync();
+            document.querySelector('#shapeColor').closest('.color-row').querySelector('[aria-label="青"]').click();
+            const paletteColor = shape.dataset.shapeColor;
+            for (const [id, value] of Object.entries({shapeKind:'triangleDown',shapeColor:'#ff0000',shapeWidth:'80',shapeHeight:'40',shapeAlign:'right',shapeGap:'20'})) {
+              const control = document.getElementById(id);
+              control.value = value;
+              control.dispatchEvent(new Event('input', {bubbles:true}));
+            }
+            const visual = shape.querySelector('[data-shape-visual]');
+            const rect = visual.getBoundingClientRect();
+            const html = formatOutputHtml(getPersistablePreviewHtml());
+            const imported = importArticleHtml(html);
+            const restored = elements.preview.querySelector('[data-inserted-component="shape"]');
+            return {width:rect.width,height:rect.height,imported,paletteColor,
+              kind:restored.dataset.shapeKind,color:restored.dataset.shapeColor,
+              align:restored.style.textAlign, gap:restored.style.marginTop};
+        }""")
+        self.assertEqual(result['width'], 80)
+        self.assertEqual(result['paletteColor'], '#0000ff')
+        self.assertEqual(result['height'], 40)
+        self.assertTrue(result['imported'])
+        self.assertEqual(result['kind'], 'triangleDown')
+        self.assertEqual(result['color'], '#ff0000')
+        self.assertEqual(result['align'], 'right')
+        self.assertEqual(result['gap'], '20px')
+
+    def test_shape_export_survives_removal_of_css_and_editor_attributes(self):
+        result = self.page.evaluate("""() => {
+            const kinds = ['arrowDown','arrowUp','arrowRight','arrowLeft','triangleDown','triangleUp','triangleRight','triangleLeft'];
+            return kinds.map(kind => {
+              const holder = document.createElement('div');
+              holder.innerHTML = shapeComponentHtml();
+              holder.firstElementChild.dataset.shapeKind = kind;
+              const html = formatOutputHtml(holder.innerHTML);
+              holder.innerHTML = html;
+              const visual = holder.querySelector('[data-shape-visual]');
+              const noAdvancedCss = !html.includes('clip-path') && !html.includes('aspect-ratio');
+              holder.querySelectorAll('*').forEach(el => [...el.attributes].forEach(attr => el.removeAttribute(attr.name)));
+              return {text:holder.textContent.trim(),noAdvancedCss};
+            });
+        }""")
+        self.assertEqual([entry['text'] for entry in result], ['↓','↑','→','←','▼','▲','▶','◀'])
+        self.assertTrue(all(entry['noAdvancedCss'] for entry in result))
+
     def test_ime_confirmation_does_not_insert_newline_and_undo_is_atomic(self):
         result = self.page.evaluate("""() => {
             elements.preview.innerHTML = '<p>start</p>'; capturePreviewEdits();
@@ -79,7 +130,7 @@ class EditorTests(unittest.TestCase):
 
     def test_all_parts_json_and_html_round_trip(self):
         types = ['heading', 'body', 'list', 'note', 'quote', 'qa', 'table', 'image', 'imageText', 'imagePair',
-                 'beforeAfter', 'code', 'rule', 'xpost', 'video', 'accordion', 'linkCard', 'toc']
+                 'beforeAfter', 'code', 'rule', 'xpost', 'video', 'accordion', 'linkCard', 'toc', 'shape']
         result = self.page.evaluate("""async types => {
             window.twttr = {widgets:{load:() => {}}};
             const results = [];

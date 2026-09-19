@@ -7348,6 +7348,9 @@ ${bodyHtml}
     function formatOutputHtml(html) {
       const outputHolder = document.createElement("div");
       outputHolder.innerHTML = html;
+      outputHolder.querySelectorAll('[data-inserted-component="shape"]').forEach((component) => {
+        applyShapeDesign(component, true);
+      });
       normalizeLinkCardSize(outputHolder);
       normalizeTocDesign(outputHolder);
       syncTocBackLinks(outputHolder);
@@ -8484,6 +8487,7 @@ ${bodyHtml}
         xpost: "X投稿",
         video: "動画",
         toc: "目次",
+        shape: "図形",
         accordion: "折りたたみ",
         linkCard: "リンクカード"
       }[type] || "パーツ";
@@ -8974,7 +8978,7 @@ ${bodyHtml}
               if (activeType === "beforeAfter") document.querySelector("#comparePreset").value = "custom";
               if (activeType === "note") document.querySelector("#notePreset").value = "custom";
               if (activeType === "quote") document.querySelector("#quotePreset").value = "custom";
-              if (["table", "list", "image", "imageText", "imagePair", "qa", "beforeAfter", "note", "quote"].includes(activeType)) {
+              if (["shape", "table", "list", "image", "imageText", "imagePair", "qa", "beforeAfter", "note", "quote"].includes(activeType)) {
                 componentProperties?._applySpecific?.();
               } else {
                 componentProperties?._apply?.();
@@ -9714,6 +9718,7 @@ ${bodyHtml}
           <option value="xpost">X投稿</option>
           <option value="video">動画</option>
           <option value="toc">目次</option>
+          <option value="shape">図形</option>
           <option value="accordion">折りたたみ</option>
           <option value="linkCard">リンクカード</option>`;
         const insertButton = document.createElement("button");
@@ -9738,6 +9743,7 @@ ${bodyHtml}
           ["xpost", "𝕏", "X投稿"],
           ["video", "▶️", "動画"],
           ["toc", "📑", "目次"],
+          ["shape", "▼", "図形"],
           ["linkCard", "🔗", "リンクカード"]
         ].forEach(([type, icon, label]) => {
           const button = document.createElement("button");
@@ -11966,6 +11972,24 @@ ${bodyHtml}
       componentPage.appendChild(section);
       componentPage.appendChild(dialog);
 
+      const shapePropertyBlock = document.createElement('div');
+      shapePropertyBlock.className = 'field list-component-settings shape-component-settings';
+      shapePropertyBlock.innerHTML = `<label>図形</label><div class="row">
+        <div class="field"><label for="shapeKind">種類</label><select id="shapeKind">
+          <option value="arrowDown">↓ 下矢印</option><option value="arrowUp">↑ 上矢印</option><option value="arrowRight">→ 右矢印</option><option value="arrowLeft">← 左矢印</option>
+          <option value="triangleDown">▼ 下三角</option><option value="triangleUp">▲ 上三角</option><option value="triangleRight">▶ 右三角</option><option value="triangleLeft">◀ 左三角</option>
+        </select></div>
+        <div class="field"><label for="shapeColor">色</label><div class="color-row"><input id="shapeColor" type="color" value="#0f8b8d"><input id="shapeColorText" type="text" value="#0f8b8d" aria-label="図形の色コード"></div></div>
+        <div class="field"><label for="shapeAlign">配置</label><select id="shapeAlign"><option value="left">左</option><option value="center" selected>中央</option><option value="right">右</option></select></div>
+        </div><div class="row">
+        <div class="field"><label for="shapeWidth">幅（px）</label><input id="shapeWidth" type="number" min="8" max="600" value="64"></div>
+        <div class="field"><label for="shapeHeight">高さ（px）</label><input id="shapeHeight" type="number" min="8" max="600" value="48"></div>
+        <div class="field"><label for="shapeGap">上下余白（px）</label><input id="shapeGap" type="number" min="0" max="120" value="0"></div></div>`;
+      tocPropertyBlock.after(shapePropertyBlock);
+      const shapeControls = Object.fromEntries(['kind','color','align','width','height','gap'].map(key =>
+        [key, shapePropertyBlock.querySelector('#shape' + key[0].toUpperCase() + key.slice(1))]));
+      const shapeColorText = shapePropertyBlock.querySelector('#shapeColorText');
+
       const controls = {
         color: dialogContent.querySelector("#insertedComponentColor"),
         background: dialogContent.querySelector("#insertedComponentBackground"),
@@ -12063,6 +12087,7 @@ ${bodyHtml}
         xpost: "X投稿",
         video: "動画",
         toc: "目次",
+        shape: "図形",
         accordion: "折りたたみ",
         linkCard: "リンクカード"
       };
@@ -12169,7 +12194,7 @@ ${bodyHtml}
             qaPropertyBlock, listPropertyBlock, comparePropertyBlock,
             notePropertyBlock, quotePropertyBlock, codePropertyBlock,
             xpostPropertyBlock, videoPropertyBlock, accordionPropertyBlock,
-            linkCardPropertyBlock, tocPropertyBlock].forEach((block) => {
+            linkCardPropertyBlock, tocPropertyBlock, shapePropertyBlock].forEach((block) => {
             block.hidden = true;
             block.classList.add("is-hidden");
             block.style.setProperty("display", "none", "important");
@@ -12206,7 +12231,7 @@ ${bodyHtml}
         propertyConvertImageButton.textContent = componentType === "image"
           ? "左右画像＋テキストへ変換"
           : "通常画像へ変換";
-        const hasDedicatedSettings = ["table", "list", "image", "imageText", "imagePair", "qa", "beforeAfter", "note", "quote", "code", "xpost", "video", "toc", "accordion", "linkCard"].includes(componentType);
+        const hasDedicatedSettings = ["shape", "table", "list", "image", "imageText", "imagePair", "qa", "beforeAfter", "note", "quote", "code", "xpost", "video", "toc", "accordion", "linkCard"].includes(componentType);
         const isImageText = componentType === "imageText";
         const supportsImageCaption = ["image", "imageText", "imagePair"].includes(componentType);
         const bubbleEnabled = isImageText && component.dataset.speechBubble === "true";
@@ -12273,6 +12298,14 @@ ${bodyHtml}
         showBlock(xpostPropertyBlock, componentType === "xpost");
         showBlock(videoPropertyBlock, componentType === "video");
         showBlock(tocPropertyBlock, componentType === "toc");
+        showBlock(shapePropertyBlock, componentType === "shape");
+        if (componentType === 'shape') {
+          Object.entries(shapeControls).forEach(([key, input]) => {
+            input.value = component.dataset['shape' + key[0].toUpperCase() + key.slice(1)] ||
+              ({kind:'arrowDown', color:'#0f8b8d', align:'center', width:'64', height:'48', gap:'0'})[key];
+          });
+          shapeColorText.value = component.dataset.shapeColor || '#0f8b8d';
+        }
         showBlock(accordionPropertyBlock, componentType === "accordion");
         showBlock(linkCardPropertyBlock, componentType === "linkCard");
         showBlock(legacyPropertyBlocks[3], isImageText && bubbleEnabled);
@@ -13713,6 +13746,15 @@ ${bodyHtml}
         if (type === "imageText") {
           elements.includeSpeechBubble.checked = componentSpeechBubble.checked;
         }
+        if (type === 'shape') {
+          if (event?.target === shapeControls.color) shapeColorText.value = shapeControls.color.value;
+          Object.entries(shapeControls).forEach(([key, input]) => {
+            component.dataset['shape' + key[0].toUpperCase() + key.slice(1)] = input.value;
+          });
+          component.dataset.shapeColor = colorValue(shapeColorText.value, shapeControls.color.value);
+          if (component.dataset.shapeColor !== 'transparent') shapeControls.color.value = component.dataset.shapeColor;
+          applyShapeDesign(component);
+        }
         if (type === "table") {
           const table = component;
           const tableHeaderColor = colorValue(elements.tableHeaderColorText.value, elements.tableHeaderColor.value);
@@ -14509,7 +14551,7 @@ ${bodyHtml}
         input.addEventListener("input", applyComponentSpecificSettings);
         input.addEventListener("change", applyComponentSpecificSettings);
       });
-      [tocControls.preset, tocControls.title, tocControls.lineHeight, tocControls.backLinks, tocControls.headingNumbers].forEach((input) => {
+      [shapeColorText, ...Object.values(shapeControls), tocControls.preset, tocControls.title, tocControls.lineHeight, tocControls.backLinks, tocControls.headingNumbers].forEach((input) => {
         input.classList.add("component-property-input");
         input.addEventListener("input", applyComponentSpecificSettings);
         input.addEventListener("change", applyComponentSpecificSettings);
@@ -14600,8 +14642,53 @@ ${bodyHtml}
       </table>`;
     }
 
+    function applyShapeDesign(component, forPublication = false) {
+      const shapes = {
+        arrowDown: ['下矢印', '30% 0,70% 0,70% 55%,100% 55%,50% 100%,0 55%,30% 55%'],
+        arrowUp: ['上矢印', '50% 0,100% 45%,70% 45%,70% 100%,30% 100%,30% 45%,0 45%'],
+        arrowRight: ['右矢印', '0 30%,55% 30%,55% 0,100% 50%,55% 100%,55% 70%,0 70%'],
+        arrowLeft: ['左矢印', '0 50%,45% 0,45% 30%,100% 30%,100% 70%,45% 70%,45% 100%'],
+        triangleDown: ['下三角', '0 0,100% 0,50% 100%'],
+        triangleUp: ['上三角', '50% 0,100% 100%,0 100%'],
+        triangleRight: ['右三角', '0 0,100% 50%,0 100%'],
+        triangleLeft: ['左三角', '100% 0,100% 100%,0 50%']
+      };
+      const data = component.dataset;
+      const kind = Object.hasOwn(shapes, data.shapeKind) ? data.shapeKind : 'arrowDown';
+      const width = Math.max(8, Math.min(600, Number(data.shapeWidth) || 64));
+      const height = Math.max(8, Math.min(600, Number(data.shapeHeight) || 48));
+      const gap = Math.max(0, Math.min(120, Number(data.shapeGap ?? 0) || 0));
+      const color = /^(#[0-9a-f]{6}|transparent)$/i.test(data.shapeColor || '') ? data.shapeColor : '#0f8b8d';
+      const align = ['left','center','right'].includes(data.shapeAlign) ? data.shapeAlign : 'center';
+      Object.assign(data, {shapeKind:kind, shapeWidth:String(width), shapeHeight:String(height), shapeGap:String(gap), shapeColor:color, shapeAlign:align});
+      component.contentEditable = 'false';
+      component.setAttribute('role', 'img');
+      component.setAttribute('aria-label', shapes[kind][0]);
+      component.style.cssText = `margin:${gap}px 0;text-align:${align};line-height:0;`;
+      const visual = document.createElement('span');
+      visual.dataset.shapeVisual = 'true';
+      visual.setAttribute('aria-hidden', 'true');
+      visual.style.cssText = `display:inline-block;width:${width}px;max-width:100%;aspect-ratio:${width} / ${height};background-color:${color};clip-path:polygon(${shapes[kind][1]});vertical-align:middle;`;
+      if (forPublication) {
+        const symbols = {arrowDown:'↓', arrowUp:'↑', arrowRight:'→', arrowLeft:'←', triangleDown:'▼', triangleUp:'▲', triangleRight:'▶', triangleLeft:'◀'};
+        visual.textContent = symbols[kind];
+        visual.removeAttribute('aria-hidden');
+        visual.style.cssText = `display:inline-block;width:${width}px;max-width:100%;min-height:${height}px;color:${color};font-size:${Math.min(width, height)}px;font-family:Arial,sans-serif;font-weight:bold;line-height:1;text-align:center;vertical-align:middle;`;
+        component.style.lineHeight = '1';
+      }
+      component.replaceChildren(visual);
+    }
+
+    function shapeComponentHtml() {
+      const component = document.createElement('div');
+      component.dataset.insertedComponent = 'shape';
+      applyShapeDesign(component);
+      return component.outerHTML;
+    }
+
     function insertedComponentHtml(type) {
       const blocks = {
+        shape: shapeComponentHtml(),
         list: `<ul data-inserted-component="list" data-list-marker="disc" style="margin:14px 0;padding:0 0 0 24px;list-style-type:disc;"><li contenteditable="true">項目1</li><li contenteditable="true">項目2</li><li contenteditable="true">項目3</li></ul>`,
         note: `<div data-inserted-component="note" contenteditable="true" style="margin:14px 0;padding:12px 16px;border-left:5px solid #0f8b8d;background:#eef8f8;border-radius:8px;">メモや注意事項を入力</div>`,
         quote: `<blockquote data-inserted-component="quote" contenteditable="true" style="margin:14px 0;padding:12px 16px;border-left:5px solid #64748b;background:#f4f6f8;color:#334155;">引用文を入力</blockquote>`,
@@ -17579,6 +17666,7 @@ ${bodyHtml}
       ensureDocumentBlocks();
       root.querySelectorAll("[data-inserted-component]").forEach((component) => {
         const type = component.dataset.insertedComponent;
+        if (type === 'shape') applyShapeDesign(component);
         if (["heading", "body"].includes(type)) return;
         component.contentEditable = ["note", "quote"].includes(type) ? "true" : "false";
         if (type === "list") component.querySelectorAll("li").forEach((item) => { item.contentEditable = "true"; });
@@ -17639,7 +17727,7 @@ ${bodyHtml}
       const contentCheck = document.createElement("div");
       contentCheck.innerHTML = cleanedHtml;
       recoverImportedEmbeds(contentCheck);
-      if (!contentCheck.textContent.trim() && !contentCheck.querySelector("img,table,hr,video,audio")) {
+      if (!contentCheck.textContent.trim() && !contentCheck.querySelector('img,table,hr,video,audio,[data-inserted-component="shape"]')) {
         setStatus("読み込めるHTMLがありませんでした");
         return false;
       }
