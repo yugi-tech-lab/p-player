@@ -3902,6 +3902,15 @@
       display: contents;
     }
 
+    .component-property-dialog .component-property-group > .table-inner-lines-row {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 10px;
+      width: 100%;
+      min-width: 0;
+    }
+
     .component-property-dialog .component-property-group > .field,
     .component-property-dialog .component-property-group > .button-row,
     .component-property-dialog .component-property-group > .table-settings-top-row {
@@ -4849,6 +4858,13 @@
                 <input id="tableCellColorText" type="text" value="#ffffff">
               </div>
             </div>
+            <div class="field">
+              <label for="tableBorderColor">枠線の色</label>
+              <div class="color-row">
+                <input id="tableBorderColor" type="color" value="#d9dee8">
+                <input id="tableBorderColorText" type="text" value="#d9dee8">
+              </div>
+            </div>
           </div>
           <div class="field">
             <label for="tableAlign">セルの文字位置</label>
@@ -4879,6 +4895,10 @@
                 <span>px</span>
               </div>
             </div>
+          </div>
+          <div class="row table-inner-lines-row">
+            <label class="check-item"><input id="tableInnerVerticalLines" type="checkbox" checked>内部の縦線を表示</label>
+            <label class="check-item"><input id="tableInnerHorizontalLines" type="checkbox" checked>内部の横線を表示</label>
           </div>
           <div class="row">
             <div class="field">
@@ -6090,11 +6110,14 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
       tableRows: "3",
       tableHeaderColor: "#2563eb",
       tableCellColor: "#ffffff",
+      tableBorderColor: "#d9dee8",
       tableAlign: "left",
       tableHeaderRow: true,
       tableHeaderColumn: false,
       tableBorderStyle: "solid",
       tableBorderWidth: "1",
+      tableInnerVerticalLines: true,
+      tableInnerHorizontalLines: true,
       tableCellPadding: "5",
       tableRowHeight: "0",
       tableRadius: "0",
@@ -6195,11 +6218,15 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
       tableHeaderColorText: document.querySelector("#tableHeaderColorText"),
       tableCellColor: document.querySelector("#tableCellColor"),
       tableCellColorText: document.querySelector("#tableCellColorText"),
+      tableBorderColor: document.querySelector("#tableBorderColor"),
+      tableBorderColorText: document.querySelector("#tableBorderColorText"),
       tableAlign: document.querySelector("#tableAlign"),
       tableHeaderRow: document.querySelector("#tableHeaderRow"),
       tableHeaderColumn: document.querySelector("#tableHeaderColumn"),
       tableBorderStyle: document.querySelector("#tableBorderStyle"),
       tableBorderWidth: document.querySelector("#tableBorderWidth"),
+      tableInnerVerticalLines: document.querySelector("#tableInnerVerticalLines"),
+      tableInnerHorizontalLines: document.querySelector("#tableInnerHorizontalLines"),
       tableCellPadding: document.querySelector("#tableCellPadding"),
       tableRowHeight: document.querySelector("#tableRowHeight"),
       tableRadius: document.querySelector("#tableRadius"),
@@ -6604,6 +6631,43 @@ ${items}
 </ul>`;
     }
 
+    function applyTableRoundedCorners(table, radiusValue, border, showVertical = true, showHorizontal = true) {
+      if (!table?.rows) return;
+      const radius = Math.max(0, Math.min(30, Number(radiusValue) || 0));
+      const rows = Array.from(table.rows);
+      const cells = rows.flatMap((row) => Array.from(row.cells));
+      table.style.borderRadius = `${radius}px`;
+      cells.forEach((cell) => {
+        cell.style.borderRadius = "0";
+      });
+      if (!radius && showVertical && showHorizontal) {
+        table.style.borderCollapse = "collapse";
+        table.style.borderSpacing = "";
+        table.style.overflow = "";
+        cells.forEach((cell) => { cell.style.border = border; });
+        return;
+      }
+      table.style.borderCollapse = "separate";
+      table.style.borderSpacing = "0";
+      table.style.overflow = "hidden";
+      rows.forEach((row, rowIndex) => {
+        const rowCells = Array.from(row.cells);
+        rowCells.forEach((cell, columnIndex) => {
+          cell.style.border = "0";
+          if (rowIndex === 0 || showHorizontal) cell.style.borderTop = border;
+          if (columnIndex === 0 || showVertical) cell.style.borderLeft = border;
+          if (columnIndex === rowCells.length - 1) cell.style.borderRight = border;
+          if (rowIndex === rows.length - 1) cell.style.borderBottom = border;
+        });
+      });
+      const firstRow = rows[0];
+      const lastRow = rows.at(-1);
+      if (firstRow?.cells[0]) firstRow.cells[0].style.borderTopLeftRadius = `${radius}px`;
+      if (firstRow?.cells.length) firstRow.cells[firstRow.cells.length - 1].style.borderTopRightRadius = `${radius}px`;
+      if (lastRow?.cells[0]) lastRow.cells[0].style.borderBottomLeftRadius = `${radius}px`;
+      if (lastRow?.cells.length) lastRow.cells[lastRow.cells.length - 1].style.borderBottomRightRadius = `${radius}px`;
+    }
+
     function buildTable(bodyStyle, componentColor, headerColor, cellColor, align, options) {
       const rows = textLines(elements.tableText.value || elements.bodyText.value)
         .map((line) => line.split("|").map((cell) => escapeHtml(cell.trim())))
@@ -6617,7 +6681,10 @@ ${items}
         Array.from({ length: columns }, (_, index) => cells[index] || "")
       );
 
-      const border = `${options.borderWidth}px ${options.borderStyle} #d9dee8`;
+      const border = `${options.borderWidth}px ${options.borderStyle} ${options.borderColor || defaults.tableBorderColor}`;
+      const showVertical = options.innerVerticalLines !== false;
+      const showHorizontal = options.innerHorizontalLines !== false;
+      const separatedBorders = options.radius > 0 || !showVertical || !showHorizontal;
       const tableRows = sizedRows.map((cells, rowIndex) => {
         return `<tr>
         ${cells.map((cell, columnIndex) => {
@@ -6626,7 +6693,13 @@ ${items}
           const striped = options.striped && !isHeader && (rowIndex + 1) % 2 === 0;
           const bg = isHeader ? `background:${headerColor};color:white;font-weight:700;` : `background:${striped ? options.stripeColor : cellColor};`;
           const height = `height:${options.rowHeight || 24}px;`;
-          const cellStyle = `border:${border};padding:${options.cellPadding}px ${options.cellPadding + 2}px;min-width:48px;text-align:${align};${height}${bg}`;
+          const roundedBorder = separatedBorders
+            ? `border:0;${rowIndex === 0 || showHorizontal ? `border-top:${border};` : ""}${columnIndex === 0 || showVertical ? `border-left:${border};` : ""}${columnIndex === cells.length - 1 ? `border-right:${border};` : ""}${rowIndex === sizedRows.length - 1 ? `border-bottom:${border};` : ""}`
+            : `border:${border};`;
+          const cornerRadius = options.radius > 0
+            ? `${rowIndex === 0 && columnIndex === 0 ? `border-top-left-radius:${options.radius}px;` : ""}${rowIndex === 0 && columnIndex === cells.length - 1 ? `border-top-right-radius:${options.radius}px;` : ""}${rowIndex === sizedRows.length - 1 && columnIndex === 0 ? `border-bottom-left-radius:${options.radius}px;` : ""}${rowIndex === sizedRows.length - 1 && columnIndex === cells.length - 1 ? `border-bottom-right-radius:${options.radius}px;` : ""}`
+            : "";
+          const cellStyle = `${roundedBorder}${cornerRadius}padding:${options.cellPadding}px ${options.cellPadding + 2}px;min-width:48px;text-align:${align};${height}${bg}`;
           return `<${tag} style="${cellStyle}">${cell}</${tag}>`;
         }).join("\n")}
 </tr>`;
@@ -6640,7 +6713,7 @@ ${items}
       const tableLayout = options.widthMode === "fixed"
         ? "width:100%;table-layout:fixed;"
         : "width:auto !important;max-width:100%;table-layout:auto !important;";
-      const table = `<table style="${bodyStyle}${tableLayout}border-collapse:collapse;border-radius:${options.radius}px;overflow:hidden;">
+      const table = `<table style="${bodyStyle}${tableLayout}border-collapse:${separatedBorders ? "separate" : "collapse"};${separatedBorders ? `border-spacing:0;${options.radius > 0 ? "overflow:hidden;" : ""}` : ""}border-radius:${options.radius}px;">
 ${colgroup}
 ${tableRows}
 </table>`;
@@ -6998,11 +7071,15 @@ ${caption ? `\n<div style="${bodyStyle}font-size:0.92em;color:#667085;margin-top
       const bodyColor = normalizeColor(elements.bodyColorText.value, defaults.bodyColor);
       const tableHeaderColor = normalizeColor(elements.tableHeaderColorText.value, defaults.tableHeaderColor);
       const tableCellColor = normalizeColor(elements.tableCellColorText.value, defaults.tableCellColor);
+      const tableBorderColor = normalizeColor(elements.tableBorderColorText.value, defaults.tableBorderColor);
       const tableOptions = {
         headerRow: elements.tableHeaderRow.checked,
         headerColumn: elements.tableHeaderColumn.checked,
         borderStyle: ["solid", "dashed", "dotted", "double"].includes(elements.tableBorderStyle.value) ? elements.tableBorderStyle.value : "solid",
         borderWidth: Math.max(0, Math.min(6, Number(elements.tableBorderWidth.value) || 0)),
+        borderColor: tableBorderColor,
+        innerVerticalLines: elements.tableInnerVerticalLines.checked,
+        innerHorizontalLines: elements.tableInnerHorizontalLines.checked,
         cellPadding: Math.max(0, Math.min(30, Number(elements.tableCellPadding.value) || 0)),
         rowHeight: Math.max(0, Math.min(200, Number(elements.tableRowHeight.value) || 0)),
         radius: Math.max(0, Math.min(30, Number(elements.tableRadius.value) || 0)),
@@ -10318,7 +10395,7 @@ ${bodyHtml}
         ["settings-group-appearance", ["pattern", "cardPattern", "mainColor", "subColor", "radius", "headingColor", "headingFont", "headingIcon"]],
         ["settings-group-text", ["title", "bodyColor", "bodySize", "bodyLineHeight", "bodyFont", "headingSize"]],
         ["settings-group-media", ["imagePath", "imagePath2", "imageWidth", "imageTextWidth", "imageHeight", "imagePosition", "imageFit", "speechBubble"]],
-        ["settings-group-table", ["tableColumns", "tableRows", "tableHeaderColor", "tableCellColor", "tableBorderStyle", "tableColumnWidths"]],
+        ["settings-group-table", ["tableColumns", "tableRows", "tableHeaderColor", "tableCellColor", "tableBorderColor", "tableBorderStyle", "tableColumnWidths"]],
         ["settings-group-component", ["listMarker", "componentColor", "imageText", "captionText"]]
       ];
       document.querySelectorAll(".control-page").forEach((page) => {
@@ -11521,6 +11598,7 @@ ${bodyHtml}
         ], "component-property-columns-3"),
         createComponentPropertyGroup("枠線・余白・列幅", [
           tableRowFor("tableBorderStyle"),
+          tableRowFor("tableInnerVerticalLines"),
           tableRowFor("tableCellPadding"),
           tableRowFor("tableRadius"),
           tableFieldFor("tableWidthMode")
@@ -11703,6 +11781,7 @@ ${bodyHtml}
           <strong>レイアウト</strong>
           <div class="row">
             <div class="field"><label for="comparePreset">スタイル</label><select id="comparePreset"><option value="simple">シンプル</option><option value="change">変更点</option><option value="success">改善結果</option><option value="mono">モノクロ</option><option value="custom" selected>カスタム</option></select></div>
+            <div class="field"><label for="compareCount">項目数</label><select id="compareCount"><option value="2">2項目</option><option value="3">3項目（フロー）</option></select></div>
             <div class="field"><label for="compareLayout">配置</label><select id="compareLayout"><option value="horizontal">左右</option><option value="vertical">上下</option></select></div>
             <div class="field"><label for="compareTextAlign">文字位置</label><select id="compareTextAlign"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div>
           </div>
@@ -11710,18 +11789,20 @@ ${bodyHtml}
             <div class="field"><label for="compareGap">間隔</label><div class="unit-input"><input id="compareGap" type="number" min="0" max="60" value="12"><span>px</span></div></div>
             <div class="field"><label class="check-item"><input id="compareArrow" type="checkbox">中央に矢印</label></div>
             <div class="field"><label for="compareArrowThickness">矢印の太さ</label><select id="compareArrowThickness"><option value="1">標準</option><option value="2">太い</option><option value="3">より太い</option><option value="4">極太</option></select></div>
-            <div class="field"><button class="secondary" id="compareSwap" type="button">左右を入れ替え</button></div>
+            <div class="field"><button class="secondary" id="compareSwap" type="button">順序を反転</button></div>
           </div>
         </div>
         <div class="list-settings-group">
           <strong>色</strong>
           <div class="row">
             <div class="field"><label for="compareBeforeBackground">Before背景</label><div class="color-row"><input id="compareBeforeBackground" type="color" value="#f4f6f8"><input id="compareBeforeBackgroundText" type="text" value="#f4f6f8"></div></div>
+            <div class="field"><label for="compareMiddleBackground">中間背景</label><div class="color-row"><input id="compareMiddleBackground" type="color" value="#f8fafc"><input id="compareMiddleBackgroundText" type="text" value="#f8fafc"></div></div>
             <div class="field"><label for="compareAfterBackground">After背景</label><div class="color-row"><input id="compareAfterBackground" type="color" value="#eef8f8"><input id="compareAfterBackgroundText" type="text" value="#eef8f8"></div></div>
             <div class="field"><label for="compareBorderColor">枠線色</label><div class="color-row"><input id="compareBorderColor" type="color" value="#d9dee8"><input id="compareBorderColorText" type="text" value="#d9dee8"></div></div>
           </div>
           <div class="row">
             <div class="field"><label for="compareBeforeTitleColor">Before見出し</label><div class="color-row"><input id="compareBeforeTitleColor" type="color" value="#64748b"><input id="compareBeforeTitleColorText" type="text" value="#64748b"></div></div>
+            <div class="field"><label for="compareMiddleTitleColor">中間見出し</label><div class="color-row"><input id="compareMiddleTitleColor" type="color" value="#475569"><input id="compareMiddleTitleColorText" type="text" value="#475569"></div></div>
             <div class="field"><label for="compareAfterTitleColor">After見出し</label><div class="color-row"><input id="compareAfterTitleColor" type="color" value="#0f8b8d"><input id="compareAfterTitleColorText" type="text" value="#0f8b8d"></div></div>
           </div>
         </div>
@@ -11740,6 +11821,7 @@ ${bodyHtml}
       listPropertyBlock.after(comparePropertyBlock);
       const compareControls = {
         preset: comparePropertyBlock.querySelector("#comparePreset"),
+        count: comparePropertyBlock.querySelector("#compareCount"),
         layout: comparePropertyBlock.querySelector("#compareLayout"),
         align: comparePropertyBlock.querySelector("#compareTextAlign"),
         gap: comparePropertyBlock.querySelector("#compareGap"),
@@ -11748,12 +11830,16 @@ ${bodyHtml}
         swap: comparePropertyBlock.querySelector("#compareSwap"),
         beforeBackground: comparePropertyBlock.querySelector("#compareBeforeBackground"),
         beforeBackgroundText: comparePropertyBlock.querySelector("#compareBeforeBackgroundText"),
+        middleBackground: comparePropertyBlock.querySelector("#compareMiddleBackground"),
+        middleBackgroundText: comparePropertyBlock.querySelector("#compareMiddleBackgroundText"),
         afterBackground: comparePropertyBlock.querySelector("#compareAfterBackground"),
         afterBackgroundText: comparePropertyBlock.querySelector("#compareAfterBackgroundText"),
         borderColor: comparePropertyBlock.querySelector("#compareBorderColor"),
         borderColorText: comparePropertyBlock.querySelector("#compareBorderColorText"),
         beforeTitleColor: comparePropertyBlock.querySelector("#compareBeforeTitleColor"),
         beforeTitleColorText: comparePropertyBlock.querySelector("#compareBeforeTitleColorText"),
+        middleTitleColor: comparePropertyBlock.querySelector("#compareMiddleTitleColor"),
+        middleTitleColorText: comparePropertyBlock.querySelector("#compareMiddleTitleColorText"),
         afterTitleColor: comparePropertyBlock.querySelector("#compareAfterTitleColor"),
         afterTitleColorText: comparePropertyBlock.querySelector("#compareAfterTitleColorText"),
         borderStyle: comparePropertyBlock.querySelector("#compareBorderStyle"),
@@ -12040,6 +12126,7 @@ ${bodyHtml}
             <div class="field"><label class="check-item"><input id="tocFitContent" type="checkbox">横幅を内容に合わせる</label></div>
             <div class="field"><label class="check-item"><input id="tocBackLinks" type="checkbox">各見出しに「目次へ戻る」を表示</label></div>
             <div class="field"><label class="check-item"><input id="tocHeadingNumbers" type="checkbox">各見出しに番号を付ける</label></div>
+            <div class="field"><label for="tocHeadingNumberSize">見出し番号サイズ</label><div class="unit-input"><input id="tocHeadingNumberSize" type="number" min="8" max="72" step="1" placeholder="自動"><span>px</span></div></div>
           </div>
           <div class="row">
             <div class="field"><label for="tocBackgroundColor">背景色</label><div class="color-row"><input id="tocBackgroundColor" type="color" value="#fbfcff"><input id="tocBackgroundColorText" type="text" value="#fbfcff" aria-label="目次の背景色コード"></div></div>
@@ -12057,6 +12144,7 @@ ${bodyHtml}
         fitContent: tocPropertyBlock.querySelector("#tocFitContent"),
         backLinks: tocPropertyBlock.querySelector("#tocBackLinks"),
         headingNumbers: tocPropertyBlock.querySelector("#tocHeadingNumbers"),
+        headingNumberSize: tocPropertyBlock.querySelector("#tocHeadingNumberSize"),
         background: tocPropertyBlock.querySelector("#tocBackgroundColor"),
         backgroundText: tocPropertyBlock.querySelector("#tocBackgroundColorText"),
         border: tocPropertyBlock.querySelector("#tocBorderColor"),
@@ -12479,10 +12567,13 @@ ${bodyHtml}
           if (["disc", "circle", "square", "decimal", "none"].includes(markerType)) elements.listMarker.value = markerType;
         }
         if (componentType === "beforeAfter") {
-          const cards = Array.from(component.children).filter((child) => !child.hasAttribute("data-compare-arrow")).slice(0, 2);
+          const cards = Array.from(component.children).filter((child) => !child.hasAttribute("data-compare-arrow")).slice(0, 3);
           const beforeCard = cards[0];
-          const afterCard = cards[1];
+          const middleCard = cards.length === 3 ? cards[1] : null;
+          const afterCard = cards.at(-1);
+          const count = component.dataset.compareCount === "3" || cards.length >= 3 ? 3 : 2;
           compareControls.preset.value = component.dataset.comparePreset || "custom";
+          compareControls.count.value = String(count);
           compareControls.layout.value = component.dataset.compareLayout || "horizontal";
           compareControls.align.value = component.dataset.compareAlign || beforeCard?.style.textAlign || "left";
           compareControls.gap.value = component.dataset.compareGap || String(parseInt(component.style.gap, 10) || 12);
@@ -12491,10 +12582,15 @@ ${bodyHtml}
             ? component.dataset.compareArrowThickness : "1";
           compareControls.arrowThickness.disabled = !compareControls.arrow.checked;
           setColorControl(compareControls.beforeBackground, compareControls.beforeBackgroundText, component.dataset.compareBeforeBackground || beforeCard?.style.backgroundColor || "#f4f6f8");
+          setColorControl(compareControls.middleBackground, compareControls.middleBackgroundText, component.dataset.compareMiddleBackground || middleCard?.style.backgroundColor || "#f8fafc");
           setColorControl(compareControls.afterBackground, compareControls.afterBackgroundText, component.dataset.compareAfterBackground || afterCard?.style.backgroundColor || "#eef8f8");
           setColorControl(compareControls.borderColor, compareControls.borderColorText, component.dataset.compareBorderColor || beforeCard?.style.borderColor || "#d9dee8");
           setColorControl(compareControls.beforeTitleColor, compareControls.beforeTitleColorText, component.dataset.compareBeforeTitleColor || beforeCard?.querySelector("strong")?.style.color || "#64748b");
+          setColorControl(compareControls.middleTitleColor, compareControls.middleTitleColorText, component.dataset.compareMiddleTitleColor || middleCard?.querySelector("strong")?.style.color || "#475569");
           setColorControl(compareControls.afterTitleColor, compareControls.afterTitleColorText, component.dataset.compareAfterTitleColor || afterCard?.querySelector("strong")?.style.color || "#0f8b8d");
+          [compareControls.middleBackground, compareControls.middleTitleColor].forEach((control) => {
+            control.closest(".field").hidden = count < 3;
+          });
           compareControls.borderStyle.value = component.dataset.compareBorderStyle || beforeCard?.style.borderStyle || "solid";
           compareControls.borderWidth.value = component.dataset.compareBorderWidth || String(parseInt(beforeCard?.style.borderWidth, 10) || 1);
           compareControls.radius.value = component.dataset.compareRadius || String(parseInt(beforeCard?.style.borderRadius, 10) || 8);
@@ -12600,6 +12696,7 @@ ${bodyHtml}
           tocControls.fitContent.checked = component.dataset.tocFitContent === "true";
           tocControls.backLinks.checked = component.dataset.tocBackLinks === "true";
           tocControls.headingNumbers.checked = component.dataset.tocHeadingNumbers === "true";
+          tocControls.headingNumberSize.value = component.dataset.tocHeadingNumberSize || "";
           setColorControl(tocControls.background, tocControls.backgroundText, component.dataset.tocBackground || tocPreset.background);
           setColorControl(tocControls.border, tocControls.borderText, component.dataset.tocBorder || tocPreset.border.match(/#[0-9a-f]{6}/i)?.[0] || "transparent");
           setColorControl(tocControls.titleColor, tocControls.titleColorText, component.dataset.tocTitleColor || tocPreset.title);
@@ -12690,12 +12787,19 @@ ${bodyHtml}
           if (bodyCell) setColorControl(elements.tableCellColor, elements.tableCellColorText, bodyCell.style.backgroundColor);
           if (firstRow?.cells[0]) {
             const cellStyle = getComputedStyle(firstRow.cells[0]);
+            setColorControl(
+              elements.tableBorderColor,
+              elements.tableBorderColorText,
+              component.dataset.tableBorderColor || cellStyle.borderTopColor || defaults.tableBorderColor
+            );
             elements.tableAlign.value = cellStyle.textAlign || "left";
             elements.tableCellPadding.value = String(parseInt(cellStyle.paddingTop, 10) || 0);
             elements.tableBorderWidth.value = String(parseInt(cellStyle.borderTopWidth, 10) || 0);
             elements.tableBorderStyle.value = cellStyle.borderTopStyle || "solid";
           }
           elements.tableRadius.value = String(parseInt(component.style.borderRadius, 10) || 0);
+          elements.tableInnerVerticalLines.checked = component.dataset.tableInnerVerticalLines !== "false";
+          elements.tableInnerHorizontalLines.checked = component.dataset.tableInnerHorizontalLines !== "false";
           const fixedWidth = component.style.tableLayout === "fixed";
           elements.tableWidthMode.value = fixedWidth ? "fixed" : "auto";
           elements.tableColumnWidths.value = fixedWidth
@@ -13329,9 +13433,30 @@ ${bodyHtml}
       };
       const applyCompareSettings = (component) => {
         if (!component || component.dataset.insertedComponent !== "beforeAfter") return;
-        const cards = Array.from(component.children).filter((child) => !child.hasAttribute("data-compare-arrow")).slice(0, 2);
+        component.querySelectorAll(":scope > [data-compare-arrow]").forEach((arrow) => arrow.remove());
+        let cards = Array.from(component.children).filter((child) => !child.hasAttribute("data-compare-arrow")).slice(0, 3);
         if (cards.length < 2) return;
-        const [beforeCard, afterCard] = cards;
+        const count = compareControls.count.value === "3" ? 3 : 2;
+        [compareControls.middleBackground, compareControls.middleTitleColor].forEach((control) => {
+          control.closest(".field").hidden = count < 3;
+        });
+        if (count === 3 && cards.length === 2) {
+          const middleCard = document.createElement("div");
+          middleCard.dataset.sideContentSlot = "true";
+          middleCard.contentEditable = "true";
+          middleCard.innerHTML = component.dataset.compareMiddleHtml
+            || "<strong>Process</strong><br>途中経過を入力";
+          cards[1].before(middleCard);
+        } else if (count === 2 && cards.length >= 3) {
+          component.dataset.compareMiddleHtml = cards[1].innerHTML;
+          cards[1].remove();
+        }
+        cards = Array.from(component.children).filter((child) => !child.hasAttribute("data-compare-arrow")).slice(0, count);
+        cards.forEach((card, index) => {
+          card.dataset.sideContentSlot = "true";
+          card.dataset.compareStage = index === 0 ? "before" : index === cards.length - 1 ? "after" : "middle";
+          card.contentEditable = "true";
+        });
         const layout = compareControls.layout.value;
         const gap = Math.max(0, Math.min(60, Number(compareControls.gap.value) || 0));
         const arrowThickness = Math.max(1, Math.min(4, Number(compareControls.arrowThickness.value) || 1));
@@ -13340,46 +13465,50 @@ ${bodyHtml}
         const radius = Math.max(0, Math.min(40, Number(compareControls.radius.value) || 0));
         const padding = Math.max(0, Math.min(60, Number(compareControls.padding.value) || 0));
         const beforeBackground = colorValue(compareControls.beforeBackgroundText.value, compareControls.beforeBackground.value);
+        const middleBackground = colorValue(compareControls.middleBackgroundText.value, compareControls.middleBackground.value);
         const afterBackground = colorValue(compareControls.afterBackgroundText.value, compareControls.afterBackground.value);
         const borderColor = colorValue(compareControls.borderColorText.value, compareControls.borderColor.value);
         const beforeTitleColor = colorValue(compareControls.beforeTitleColorText.value, compareControls.beforeTitleColor.value);
+        const middleTitleColor = colorValue(compareControls.middleTitleColorText.value, compareControls.middleTitleColor.value);
         const afterTitleColor = colorValue(compareControls.afterTitleColorText.value, compareControls.afterTitleColor.value);
         const shadow = compareControls.shadow.value === "strong"
           ? "0 8px 20px rgba(15,23,42,.18)"
           : compareControls.shadow.value === "soft" ? "0 3px 10px rgba(15,23,42,.10)" : "none";
-        let arrow = component.querySelector(":scope > [data-compare-arrow]");
+        const arrows = [];
         if (compareControls.arrow.checked) {
-          if (!arrow) {
-            arrow = document.createElement("span");
+          cards.slice(1).forEach((card) => {
+            const arrow = document.createElement("span");
             arrow.dataset.compareArrow = "true";
             arrow.contentEditable = "false";
             arrow.setAttribute("aria-hidden", "true");
-          }
-          arrow.textContent = layout === "vertical" ? "↓" : "→";
-          arrow.style.alignSelf = "center";
-          arrow.style.justifySelf = "center";
-          arrow.style.color = afterTitleColor;
-          arrow.style.fontSize = "1.5em";
-          arrow.style.fontWeight = arrowThickness >= 3 ? "900" : "700";
-          arrow.style.webkitTextStroke = arrowThickness > 1 ? `${(arrowThickness - 1) * 0.55}px currentColor` : "0";
-          arrow.style.paintOrder = "stroke fill";
-          afterCard.before(arrow);
-        } else {
-          arrow?.remove();
-          arrow = null;
+            arrow.textContent = layout === "vertical" ? "↓" : "→";
+            arrow.style.alignSelf = "center";
+            arrow.style.justifySelf = "center";
+            arrow.style.color = afterTitleColor;
+            arrow.style.fontSize = "1.5em";
+            arrow.style.fontWeight = arrowThickness >= 3 ? "900" : "700";
+            arrow.style.webkitTextStroke = arrowThickness > 1 ? `${(arrowThickness - 1) * 0.55}px currentColor` : "0";
+            arrow.style.paintOrder = "stroke fill";
+            card.before(arrow);
+            arrows.push(arrow);
+          });
         }
         component.style.display = "grid";
         component.style.gridTemplateColumns = layout === "horizontal"
-          ? (arrow ? "minmax(0,1fr) auto minmax(0,1fr)" : "repeat(2,minmax(0,1fr))")
+          ? (arrows.length
+            ? Array.from({ length: cards.length * 2 - 1 }, (_, index) => index % 2 ? "auto" : "minmax(0,1fr)").join(" ")
+            : `repeat(${cards.length},minmax(0,1fr))`)
           : "minmax(0,1fr)";
-        component.style.gridTemplateRows = layout === "vertical" && arrow ? "auto auto auto" : "";
+        component.style.gridTemplateRows = "";
         component.style.gap = `${gap}px`;
         component.style.margin = "14px 0";
-        [beforeCard, afterCard].forEach((card, index) => {
+        cards.forEach((card, index) => {
+          const isFirst = index === 0;
+          const isLast = index === cards.length - 1;
           card.style.boxSizing = "border-box";
           card.style.minWidth = "0";
           card.style.padding = `${padding}px`;
-          card.style.backgroundColor = index === 0 ? beforeBackground : afterBackground;
+          card.style.backgroundColor = isFirst ? beforeBackground : isLast ? afterBackground : middleBackground;
           card.style.border = compareControls.borderStyle.value === "none"
             ? "0"
             : `${borderWidth}px ${compareControls.borderStyle.value} ${borderColor}`;
@@ -13389,18 +13518,21 @@ ${bodyHtml}
           card.style.overflowWrap = "anywhere";
           card.style.wordBreak = "break-word";
           const title = card.querySelector("strong");
-          if (title) title.style.color = index === 0 ? beforeTitleColor : afterTitleColor;
+          if (title) title.style.color = isFirst ? beforeTitleColor : isLast ? afterTitleColor : middleTitleColor;
         });
         component.dataset.comparePreset = compareControls.preset.value;
+        component.dataset.compareCount = String(count);
         component.dataset.compareLayout = layout;
         component.dataset.compareAlign = compareControls.align.value;
         component.dataset.compareGap = String(gap);
         component.dataset.compareArrow = String(compareControls.arrow.checked);
         component.dataset.compareArrowThickness = String(arrowThickness);
         component.dataset.compareBeforeBackground = beforeBackground;
+        component.dataset.compareMiddleBackground = middleBackground;
         component.dataset.compareAfterBackground = afterBackground;
         component.dataset.compareBorderColor = borderColor;
         component.dataset.compareBeforeTitleColor = beforeTitleColor;
+        component.dataset.compareMiddleTitleColor = middleTitleColor;
         component.dataset.compareAfterTitleColor = afterTitleColor;
         component.dataset.compareBorderStyle = compareControls.borderStyle.value;
         component.dataset.compareBorderWidth = String(borderWidth);
@@ -13867,6 +13999,7 @@ ${bodyHtml}
           const table = component;
           const tableHeaderColor = colorValue(elements.tableHeaderColorText.value, elements.tableHeaderColor.value);
           const tableCellColor = colorValue(elements.tableCellColorText.value, elements.tableCellColor.value);
+          const tableBorderColor = colorValue(elements.tableBorderColorText.value, elements.tableBorderColor.value);
           const targetColumns = Math.max(1, Math.min(6, Number(elements.tableColumns.value) || 1));
           const targetRows = Math.max(1, Math.min(20, Number(elements.tableRows.value) || 1));
           while (table.rows[0]?.cells.length < targetColumns) {
@@ -13904,15 +14037,27 @@ ${bodyHtml}
           });
           const borderStyle = elements.tableBorderStyle.value;
           const borderWidth = `${Math.max(0, Number(elements.tableBorderWidth.value) || 0)}px`;
+          const cellBorder = `${borderWidth} ${borderStyle} ${tableBorderColor}`;
           component.querySelectorAll("td, th").forEach((cell) => {
-            cell.style.border = `${borderWidth} ${borderStyle} #d9dee8`;
+            cell.style.border = cellBorder;
             cell.style.padding = `${Math.max(0, Number(elements.tableCellPadding.value) || 0)}px`;
             cell.style.minWidth = "48px";
             cell.style.textAlign = elements.tableAlign.value;
             cell.style.height = Number(elements.tableRowHeight.value) > 0 ? `${elements.tableRowHeight.value}px` : "24px";
             cell.style.backgroundColor = cell.tagName === "TH" ? tableHeaderColor : tableCellColor;
           });
-          component.style.borderRadius = `${Math.max(0, Number(elements.tableRadius.value) || 0)}px`;
+          const showInnerVerticalLines = elements.tableInnerVerticalLines.checked;
+          const showInnerHorizontalLines = elements.tableInnerHorizontalLines.checked;
+          component.dataset.tableInnerVerticalLines = String(showInnerVerticalLines);
+          component.dataset.tableInnerHorizontalLines = String(showInnerHorizontalLines);
+          component.dataset.tableBorderColor = tableBorderColor;
+          applyTableRoundedCorners(
+            component,
+            elements.tableRadius.value,
+            cellBorder,
+            showInnerVerticalLines,
+            showInnerHorizontalLines
+          );
           const widths = elements.tableColumnWidths.value.split("|").map((width) => width.trim()).filter(Boolean);
           const fixedWidth = elements.tableWidthMode.value === "fixed";
           component.style.setProperty("table-layout", fixedWidth ? "fixed" : "auto", fixedWidth ? "" : "important");
@@ -13995,6 +14140,12 @@ ${bodyHtml}
           component.dataset.tocFitContent = String(tocControls.fitContent.checked);
           component.dataset.tocBackLinks = String(tocControls.backLinks.checked);
           component.dataset.tocHeadingNumbers = String(tocControls.headingNumbers.checked);
+          const headingNumberSize = Number(tocControls.headingNumberSize.value);
+          if (Number.isFinite(headingNumberSize) && headingNumberSize >= 8 && headingNumberSize <= 72) {
+            component.dataset.tocHeadingNumberSize = String(headingNumberSize);
+          } else {
+            delete component.dataset.tocHeadingNumberSize;
+          }
           normalizeTocDesign(component);
           syncTocBackLinks(elements.preview);
         }
@@ -14170,12 +14321,13 @@ ${bodyHtml}
       [
         elements.tableBorderStyle, elements.tableBorderWidth, elements.tableCellPadding,
         elements.tableRowHeight, elements.tableAlign, elements.tableHeaderColor,
-        elements.tableCellColor, elements.tableRadius, elements.imageWidth,
+        elements.tableCellColor, elements.tableBorderColor, elements.tableRadius, elements.imageWidth,
+        elements.tableInnerVerticalLines, elements.tableInnerHorizontalLines,
         elements.imageTextWidth, elements.imageHeight, elements.imageAutoHeight, elements.imagePosition, elements.imageTextVertical, elements.imageFit,
         elements.tableColumns, elements.tableRows, elements.tableHeaderRow,
         elements.tableHeaderColumn, elements.tableStriped, elements.tableResponsive,
         elements.tableWidthMode, elements.tableColumnWidths, elements.tableHeaderColorText,
-        elements.tableCellColorText, elements.speechBubbleVertical, elements.speechBubbleHorizontal,
+        elements.tableCellColorText, elements.tableBorderColorText, elements.speechBubbleVertical, elements.speechBubbleHorizontal,
         elements.speechBubbleShape, elements.speechBubbleTailPosition, elements.speechBubbleTailSize,
         elements.speechBubbleTailAngle, elements.includeSpeechBubble, componentImageCaption, componentImageCaption2,
         componentImageCaption3,
@@ -14491,10 +14643,10 @@ ${bodyHtml}
         capturePreviewEdits();
       });
       const comparePresets = {
-        simple: { before: "#f4f6f8", after: "#eef8f8", beforeTitle: "#64748b", afterTitle: "#0f8b8d", border: "#d9dee8", arrow: false, arrowThickness: "1", borderStyle: "solid", radius: "8", padding: "12", gap: "12", shadow: "none" },
-        change: { before: "#fff7ed", after: "#eff6ff", beforeTitle: "#c2410c", afterTitle: "#2563eb", border: "#cbd5e1", arrow: true, arrowThickness: "2", borderStyle: "solid", radius: "8", padding: "14", gap: "12", shadow: "none" },
-        success: { before: "#fef2f2", after: "#f0fdf4", beforeTitle: "#dc2626", afterTitle: "#16a34a", border: "#d9dee8", arrow: true, arrowThickness: "2", borderStyle: "solid", radius: "10", padding: "14", gap: "14", shadow: "soft" },
-        mono: { before: "#f3f4f6", after: "#ffffff", beforeTitle: "#4b5563", afterTitle: "#111827", border: "#9ca3af", arrow: true, arrowThickness: "1", borderStyle: "solid", radius: "0", padding: "12", gap: "10", shadow: "none" }
+        simple: { before: "#f4f6f8", middle: "#f8fafc", after: "#eef8f8", beforeTitle: "#64748b", middleTitle: "#475569", afterTitle: "#0f8b8d", border: "#d9dee8", arrow: false, arrowThickness: "1", borderStyle: "solid", radius: "8", padding: "12", gap: "12", shadow: "none" },
+        change: { before: "#fff7ed", middle: "#fefce8", after: "#eff6ff", beforeTitle: "#c2410c", middleTitle: "#ca8a04", afterTitle: "#2563eb", border: "#cbd5e1", arrow: true, arrowThickness: "2", borderStyle: "solid", radius: "8", padding: "14", gap: "12", shadow: "none" },
+        success: { before: "#fef2f2", middle: "#fffbeb", after: "#f0fdf4", beforeTitle: "#dc2626", middleTitle: "#d97706", afterTitle: "#16a34a", border: "#d9dee8", arrow: true, arrowThickness: "2", borderStyle: "solid", radius: "10", padding: "14", gap: "14", shadow: "soft" },
+        mono: { before: "#f3f4f6", middle: "#f9fafb", after: "#ffffff", beforeTitle: "#4b5563", middleTitle: "#374151", afterTitle: "#111827", border: "#9ca3af", arrow: true, arrowThickness: "1", borderStyle: "solid", radius: "0", padding: "12", gap: "10", shadow: "none" }
       };
       const setCompareColor = (colorInput, textInput, value) => {
         colorInput.value = value;
@@ -14504,8 +14656,10 @@ ${bodyHtml}
         const preset = comparePresets[compareControls.preset.value];
         if (!preset) return;
         setCompareColor(compareControls.beforeBackground, compareControls.beforeBackgroundText, preset.before);
+        setCompareColor(compareControls.middleBackground, compareControls.middleBackgroundText, preset.middle);
         setCompareColor(compareControls.afterBackground, compareControls.afterBackgroundText, preset.after);
         setCompareColor(compareControls.beforeTitleColor, compareControls.beforeTitleColorText, preset.beforeTitle);
+        setCompareColor(compareControls.middleTitleColor, compareControls.middleTitleColorText, preset.middleTitle);
         setCompareColor(compareControls.afterTitleColor, compareControls.afterTitleColorText, preset.afterTitle);
         setCompareColor(compareControls.borderColor, compareControls.borderColorText, preset.border);
         compareControls.arrow.checked = preset.arrow;
@@ -14524,9 +14678,11 @@ ${bodyHtml}
         input.classList.add("component-property-input");
         const update = () => {
           if (input === compareControls.beforeBackground) compareControls.beforeBackgroundText.value = input.value;
+          if (input === compareControls.middleBackground) compareControls.middleBackgroundText.value = input.value;
           if (input === compareControls.afterBackground) compareControls.afterBackgroundText.value = input.value;
           if (input === compareControls.borderColor) compareControls.borderColorText.value = input.value;
           if (input === compareControls.beforeTitleColor) compareControls.beforeTitleColorText.value = input.value;
+          if (input === compareControls.middleTitleColor) compareControls.middleTitleColorText.value = input.value;
           if (input === compareControls.afterTitleColor) compareControls.afterTitleColorText.value = input.value;
           compareControls.preset.value = "custom";
           applyComponentSpecificSettings();
@@ -14537,12 +14693,13 @@ ${bodyHtml}
       compareControls.swap.addEventListener("click", () => {
         const component = getTargetComponent();
         if (component?.dataset.insertedComponent !== "beforeAfter") return;
-        const cards = Array.from(component.children).filter((child) => !child.hasAttribute("data-compare-arrow")).slice(0, 2);
+        component.querySelectorAll(":scope > [data-compare-arrow]").forEach((arrow) => arrow.remove());
+        const cards = Array.from(component.children).filter((child) => !child.hasAttribute("data-compare-arrow")).slice(0, 3);
         if (cards.length < 2) return;
-        component.insertBefore(cards[1], cards[0]);
+        cards.reverse().forEach((card) => component.appendChild(card));
         applyCompareSettings(component);
         capturePreviewEdits();
-        setStatus("Before / Afterを入れ替えました");
+        setStatus("Before / Afterの順序を反転しました");
       });
       const notePresets = {
         memo: { icon: "📝", frame: "left", layout: "block", accent: "#0f8b8d", background: "#eef8f8", border: "#0f8b8d", width: "5", radius: "8", padding: "12", shadow: "none" },
@@ -14777,7 +14934,7 @@ ${bodyHtml}
     function insertedTableHtml() {
       const header = Array.from({ length: 3 }, (_, index) => `<th contenteditable="true" style="border:1px solid #d9dee8;padding:5px;background:#2563eb;text-align:left;">項目${index + 1}</th>`).join("");
       const rows = Array.from({ length: 2 }, (_, rowIndex) => `<tr>${Array.from({ length: 3 }, (_, columnIndex) => `<td contenteditable="true" style="border:1px solid #d9dee8;padding:5px;background:#ffffff;text-align:left;">${rowIndex + 1}-${columnIndex + 1}</td>`).join("")}</tr>`).join("");
-      return `<table data-inserted-component="table" data-table-caption="false" style="width:auto !important;max-width:100%;border-collapse:collapse;margin:14px 0;table-layout:auto !important;border-radius:0;">
+      return `<table data-inserted-component="table" data-table-caption="false" data-table-border-color="#d9dee8" data-table-inner-vertical-lines="true" data-table-inner-horizontal-lines="true" style="width:auto !important;max-width:100%;border-collapse:collapse;margin:14px 0;table-layout:auto !important;border-radius:0;">
         <tbody><tr>${header}</tr>${rows}</tbody>
       </table>`;
     }
@@ -14837,7 +14994,7 @@ ${bodyHtml}
         image: `<figure data-inserted-component="image" data-image-caption="false" data-image-auto-height="false" contenteditable="false" style="margin:14px 0;text-align:center;"><img data-inserted-image="true" src="${escapeHtml(sampleImageSrc)}" alt="" style="display:block;width:100%;height:240px;object-fit:contain;"></figure>`,
         imageText: `<div data-inserted-component="imageText" data-speech-bubble="false" data-image-auto-height="false" contenteditable="false" style="display:flex;width:100%;max-width:100%;box-sizing:border-box;gap:16px;align-items:center;margin:14px 0;"><div contenteditable="false" style="flex:0 0 40%;min-width:0;"><img data-inserted-image="true" src="${escapeHtml(sampleImageSrc)}" alt="" style="display:block;width:100%;height:240px;object-fit:contain;"></div><div data-side-content-slot="true" contenteditable="true" style="flex:1 1 0%;min-width:0;max-width:100%;align-self:center;overflow-wrap:anywhere;word-break:break-word;white-space:normal;">画像の横に文章を入力</div></div>`,
         imagePair: `<div data-inserted-component="imagePair" data-image-pair-count="2" data-image-auto-height="false" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0;"><div contenteditable="false" style="min-width:0;"><img data-inserted-image="true" src="${escapeHtml(sampleImageSrc)}" alt="" style="display:block;width:100%;height:240px;object-fit:contain;"></div><div contenteditable="false" style="min-width:0;"><img data-inserted-image="true" src="${escapeHtml(sampleImageSrc)}" alt="" style="display:block;width:100%;height:240px;object-fit:contain;"></div></div>`,
-        beforeAfter: `<div data-inserted-component="beforeAfter" contenteditable="false" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0;"><div data-side-content-slot="true" contenteditable="true" style="padding:12px;background:#f4f6f8;border-radius:8px;"><strong>Before</strong><br>変更前を入力</div><div data-side-content-slot="true" contenteditable="true" style="padding:12px;background:#eef8f8;border-radius:8px;"><strong>After</strong><br>変更後を入力</div></div>`,
+        beforeAfter: `<div data-inserted-component="beforeAfter" data-compare-count="2" contenteditable="false" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0;"><div data-compare-stage="before" data-side-content-slot="true" contenteditable="true" style="padding:12px;background:#f4f6f8;border-radius:8px;"><strong>Before</strong><br>変更前を入力</div><div data-compare-stage="after" data-side-content-slot="true" contenteditable="true" style="padding:12px;background:#eef8f8;border-radius:8px;"><strong>After</strong><br>変更後を入力</div></div>`,
         code: `<div data-inserted-component="code" data-code-show-file-name="true" data-code-file-name="sample.txt" data-code-show-line-numbers="true" data-code-line-start="1" data-code-wrap-mode="scroll" data-code-collapsible="false" data-code-initially-open="true" style="margin:14px 0;border-radius:8px;overflow:hidden;background:#172033;color:#f8fafc;font-family:Consolas,'Courier New',monospace;"><div data-code-toolbar contenteditable="false" style="display:flex;align-items:center;justify-content:flex-start;gap:12px;padding:8px 12px;background:#263247;border-bottom:1px solid #475569;font-family:Meiryo,sans-serif;font-size:12px;"><span data-code-filename>sample.txt</span></div><details data-code-details open><summary data-code-summary contenteditable="false" style="display:none;padding:9px 12px;background:#263247;cursor:pointer;font-family:Meiryo,sans-serif;font-size:13px;">コードを表示</summary><div data-code-view style="display:grid;grid-template-columns:max-content minmax(0,1fr);overflow-x:auto;"><pre data-code-line-numbers contenteditable="false" aria-hidden="true" style="margin:0;padding:14px 10px 14px 12px;background:#111827;color:#64748b;text-align:right;line-height:1.6;user-select:none;">1</pre><pre data-code-content contenteditable="true" style="margin:0;padding:14px;min-width:max-content;background:#172033;color:#f8fafc;line-height:1.6;white-space:pre;outline:none;">コードを入力</pre></div></details></div>`,
         rule: `<hr data-inserted-component="rule" style="border:0;border-top:2px solid #cbd5e1;margin:18px 0;">`,
         xpost: `<div data-inserted-component="xpost" data-xpost-count="1" data-embed-url="" data-embed-url2="" data-embed-url3="" data-xpost-caption="" data-xpost-caption2="" data-xpost-caption3="" data-xpost-side-content="text" data-xpost-side-image-url="" data-xpost-side-text-align="left" data-xpost-side-text-font="inherit" data-xpost-side-text-size="16" data-xpost-side-text-color="#172033" contenteditable="false" style="margin:0 0 6px;"><div data-embed-layout><div data-embed-slot="true">${embedPlaceholderHtml("𝕏", "設定メニューでX投稿のURLを入力してください", false)}</div><div data-embed-text data-side-content-slot="true" contenteditable="true" style="display:none;flex:1 1 0%;min-width:0;overflow-wrap:anywhere;word-break:break-word;white-space:normal;align-self:center;text-align:left;font-family:inherit;font-size:16px;color:#172033;">投稿の横に文章を入力</div><div data-embed-side-image contenteditable="false" style="display:none;flex:1 1 0%;min-width:0;align-self:center;"></div></div></div>`,
@@ -15265,17 +15422,21 @@ ${bodyHtml}
         });
         return ids;
       };
-      const numberedHeadingIds = new Set();
+      const numberedHeadings = new Map();
       tocComponents.filter((component) => component.dataset.tocHeadingNumbers === "true").forEach((component) => {
-        linkedHeadingIds(component).forEach((id) => numberedHeadingIds.add(id));
+        const size = Number(component.dataset.tocHeadingNumberSize);
+        const validSize = Number.isFinite(size) && size >= 8 && size <= 72 ? size : null;
+        linkedHeadingIds(component).forEach((id) => numberedHeadings.set(id, validSize));
       });
       root.querySelectorAll('[data-toc-heading-number]').forEach((number) => number.remove());
-      headings.filter((heading) => numberedHeadingIds.has(heading.id)).forEach((heading, index) => {
+      headings.filter((heading) => numberedHeadings.has(heading.id)).forEach((heading, index) => {
         const number = document.createElement('span');
         number.dataset.tocHeadingNumber = 'true';
         number.contentEditable = 'false';
         number.textContent = `${index + 1}. `;
         number.style.cssText = 'white-space:pre;flex:0 0 auto;';
+        const numberSize = numberedHeadings.get(heading.id);
+        if (numberSize) number.style.fontSize = `${numberSize}px`;
         const content = heading.querySelector(':scope > [data-heading-content]');
         const textWalker = document.createTreeWalker(content || heading, NodeFilter.SHOW_TEXT, {
           acceptNode: (node) => /[^\s\u200b-\u200d\ufeff]/u.test(node.textContent)
@@ -15367,7 +15528,7 @@ ${bodyHtml}
         : Array.from(root?.querySelectorAll?.('[data-inserted-component="beforeAfter"]') || []);
       beforeAfterComponents.forEach((component) => {
         component.contentEditable = "false";
-        Array.from(component.children).forEach((column) => {
+        Array.from(component.children).filter((column) => !column.hasAttribute("data-compare-arrow")).slice(0, 3).forEach((column) => {
           column.dataset.sideContentSlot = "true";
           column.contentEditable = "true";
         });
@@ -16603,6 +16764,13 @@ ${bodyHtml}
       selectedTableCells.forEach((cell) => cell.classList.remove("table-cell-selected"));
       selectedTableCells = [];
       syncTableColumnsAfterStructureChange(table);
+      applyTableRoundedCorners(
+        table,
+        elements.tableRadius.value,
+        `${Math.max(0, Number(elements.tableBorderWidth.value) || 0)}px ${elements.tableBorderStyle.value} ${normalizeColor(elements.tableBorderColorText.value, elements.tableBorderColor.value)}`,
+        elements.tableInnerVerticalLines.checked,
+        elements.tableInnerHorizontalLines.checked
+      );
       setupTableColumnResizeFor(table);
       document.querySelector(".inserted-component-properties")?._sync?.();
       capturePreviewEdits();
@@ -17218,6 +17386,7 @@ ${bodyHtml}
     elements.subColor.addEventListener("input", () => syncColor(elements.subColor, elements.subColorText));
     elements.tableHeaderColor.addEventListener("input", () => syncColor(elements.tableHeaderColor, elements.tableHeaderColorText));
     elements.tableCellColor.addEventListener("input", () => syncColor(elements.tableCellColor, elements.tableCellColorText));
+    elements.tableBorderColor.addEventListener("input", () => syncColor(elements.tableBorderColor, elements.tableBorderColorText));
     elements.headingColor.addEventListener("input", () => syncColor(elements.headingColor, elements.headingColorText));
     elements.cardMainColor.addEventListener("input", () => syncColor(elements.cardMainColor, elements.cardMainColorText));
     elements.cardSubColor.addEventListener("input", () => syncColor(elements.cardSubColor, elements.cardSubColorText));
@@ -17227,6 +17396,7 @@ ${bodyHtml}
     elements.subColorText.addEventListener("change", () => syncColor(elements.subColorText, elements.subColor));
     elements.tableHeaderColorText.addEventListener("change", () => syncColor(elements.tableHeaderColorText, elements.tableHeaderColor));
     elements.tableCellColorText.addEventListener("change", () => syncColor(elements.tableCellColorText, elements.tableCellColor));
+    elements.tableBorderColorText.addEventListener("change", () => syncColor(elements.tableBorderColorText, elements.tableBorderColor));
     elements.headingColorText.addEventListener("change", () => syncColor(elements.headingColorText, elements.headingColor));
     elements.cardMainColorText.addEventListener("change", () => syncColor(elements.cardMainColorText, elements.cardMainColor));
     elements.cardSubColorText.addEventListener("change", () => syncColor(elements.cardSubColorText, elements.cardSubColor));
@@ -17895,7 +18065,7 @@ ${bodyHtml}
           }
         }
         if (type === "beforeAfter") {
-          Array.from(component.children).slice(0, 2).forEach((card) => {
+          Array.from(component.children).filter((card) => !card.hasAttribute("data-compare-arrow")).slice(0, 3).forEach((card) => {
             card.dataset.sideContentSlot = "true";
             card.contentEditable = "true";
           });
@@ -18192,11 +18362,15 @@ ${bodyHtml}
       elements.tableHeaderColorText.value = defaults.tableHeaderColor;
       elements.tableCellColor.value = defaults.tableCellColor;
       elements.tableCellColorText.value = defaults.tableCellColor;
+      elements.tableBorderColor.value = defaults.tableBorderColor;
+      elements.tableBorderColorText.value = defaults.tableBorderColor;
       elements.tableAlign.value = defaults.tableAlign;
       elements.tableHeaderRow.checked = defaults.tableHeaderRow;
       elements.tableHeaderColumn.checked = defaults.tableHeaderColumn;
       elements.tableBorderStyle.value = defaults.tableBorderStyle;
       elements.tableBorderWidth.value = defaults.tableBorderWidth;
+      elements.tableInnerVerticalLines.checked = defaults.tableInnerVerticalLines;
+      elements.tableInnerHorizontalLines.checked = defaults.tableInnerHorizontalLines;
       elements.tableCellPadding.value = defaults.tableCellPadding;
       elements.tableRowHeight.value = defaults.tableRowHeight;
       elements.tableRadius.value = defaults.tableRadius;

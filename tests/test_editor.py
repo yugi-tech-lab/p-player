@@ -676,6 +676,64 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["spotWarning"]["icon"], "⚠️")
         self.assertIn('data-note-layout="spot"', result["savedHtml"])
 
+    def test_before_after_supports_three_step_flow_and_restores_middle(self):
+        result = self.page.evaluate("""() => {
+            elements.preview.innerHTML = insertedComponentHtml('beforeAfter');
+            const component = elements.preview.firstElementChild;
+            activeInsertedComponent = component;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const count = document.querySelector('#compareCount');
+            const arrow = document.querySelector('#compareArrow');
+            const layout = document.querySelector('#compareLayout');
+            const cards = () => [...component.children].filter(el => !el.hasAttribute('data-compare-arrow'));
+            const arrows = () => [...component.querySelectorAll(':scope > [data-compare-arrow]')];
+            const initial = {count:count.value, cards:cards().length};
+            count.value = '3';
+            count.dispatchEvent(new Event('input', {bubbles:true}));
+            arrow.checked = true;
+            arrow.dispatchEvent(new Event('input', {bubbles:true}));
+            const middle = cards()[1];
+            middle.innerHTML = '<strong>試作</strong><br>中間データ';
+            capturePreviewEdits();
+            const horizontal = {
+              count:component.dataset.compareCount,
+              cards:cards().length,
+              arrows:arrows().map(el => el.textContent),
+              stages:cards().map(el => el.dataset.compareStage),
+              columns:component.style.gridTemplateColumns
+            };
+            count.value = '2';
+            count.dispatchEvent(new Event('input', {bubbles:true}));
+            const reduced = {cards:cards().length, saved:component.dataset.compareMiddleHtml};
+            count.value = '3';
+            count.dispatchEvent(new Event('input', {bubbles:true}));
+            layout.value = 'vertical';
+            layout.dispatchEvent(new Event('input', {bubbles:true}));
+            const restoredMiddle = cards()[1].innerHTML;
+            const verticalArrows = arrows().map(el => el.textContent);
+            const html = formatOutputHtml(getPersistablePreviewHtml());
+            importArticleHtml(html);
+            const imported = elements.preview.querySelector('[data-inserted-component="beforeAfter"]');
+            return {initial, horizontal, reduced, restoredMiddle, verticalArrows,
+              importedCount:imported.dataset.compareCount,
+              importedCards:[...imported.children].filter(el => !el.hasAttribute('data-compare-arrow')).length,
+              importedArrows:imported.querySelectorAll(':scope > [data-compare-arrow]').length};
+        }""")
+        self.assertEqual(result['initial'], {'count': '2', 'cards': 2})
+        self.assertEqual(result['horizontal']['count'], '3')
+        self.assertEqual(result['horizontal']['cards'], 3)
+        self.assertEqual(result['horizontal']['arrows'], ['→', '→'])
+        self.assertEqual(result['horizontal']['stages'], ['before', 'middle', 'after'])
+        self.assertIn('auto', result['horizontal']['columns'])
+        self.assertEqual(result['reduced']['cards'], 2)
+        self.assertIn('中間データ', result['reduced']['saved'])
+        self.assertIn('中間データ', result['restoredMiddle'])
+        self.assertEqual(result['verticalArrows'], ['↓', '↓'])
+        self.assertEqual(result['importedCount'], '3')
+        self.assertEqual(result['importedCards'], 3)
+        self.assertEqual(result['importedArrows'], 2)
+
     def test_empty_text_component_keeps_layout_and_accepts_text_again(self):
         self.page.evaluate("""() => {
             elements.preview.innerHTML = insertedComponentHtml('note');
@@ -875,6 +933,158 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["caretColumns"], ["0-0", "0-2"])
         self.assertEqual(result["selectedRows"], ["1-0"])
         self.assertEqual(result["selectedColumns"], ["0-1"])
+
+    def test_table_radius_is_visible_and_survives_round_trip(self):
+        result = self.page.evaluate("""() => {
+            elements.preview.innerHTML = insertedComponentHtml('table');
+            const table = elements.preview.querySelector('table');
+            activeInsertedComponent = table;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const radius = document.querySelector('#tableRadius');
+            radius.value = '14';
+            radius.dispatchEvent(new Event('input', {bubbles:true}));
+            const first = table.rows[0].cells[0];
+            const last = table.rows[table.rows.length - 1].cells[table.rows[table.rows.length - 1].cells.length - 1];
+            const rounded = {
+              radius:table.style.borderRadius,
+              collapse:table.style.borderCollapse,
+              spacing:table.style.borderSpacing,
+              overflow:table.style.overflow,
+              first:first.style.borderTopLeftRadius,
+              last:last.style.borderBottomRightRadius,
+              innerRight:first.style.borderRightWidth,
+              nextLeft:table.rows[0].cells[1].style.borderLeftWidth
+            };
+            const html = formatOutputHtml(getPersistablePreviewHtml());
+            importArticleHtml(html);
+            const restored = elements.preview.querySelector('table');
+            const restoredState = {
+              radius:restored.style.borderRadius,
+              collapse:restored.style.borderCollapse,
+              first:restored.rows[0].cells[0].style.borderTopLeftRadius
+            };
+            activeInsertedComponent = restored;
+            properties._sync();
+            radius.value = '0';
+            radius.dispatchEvent(new Event('input', {bubbles:true}));
+            return {rounded, restored:restoredState, square:{
+              collapse:restored.style.borderCollapse,
+              overflow:restored.style.overflow,
+              first:restored.rows[0].cells[0].style.borderTopLeftRadius,
+              right:restored.rows[0].cells[0].style.borderRightWidth
+            }};
+        }""")
+        self.assertEqual(result['rounded'], {
+            'radius': '14px', 'collapse': 'separate', 'spacing': '0px',
+            'overflow': 'hidden', 'first': '14px', 'last': '14px',
+            'innerRight': '0px', 'nextLeft': '1px'})
+        self.assertEqual(result['restored'], {
+            'radius': '14px', 'collapse': 'separate', 'first': '14px'})
+        self.assertEqual(result['square'], {
+            'collapse': 'collapse', 'overflow': '', 'first': '0px', 'right': '1px'})
+
+    def test_table_inner_vertical_and_horizontal_lines_can_be_hidden(self):
+        result = self.page.evaluate("""() => {
+            elements.preview.innerHTML = insertedComponentHtml('table');
+            const table = elements.preview.querySelector('table');
+            activeInsertedComponent = table;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const vertical = document.querySelector('#tableInnerVerticalLines');
+            const horizontal = document.querySelector('#tableInnerHorizontalLines');
+            const verticalRect = vertical.closest('label').getBoundingClientRect();
+            const horizontalRect = horizontal.closest('label').getBoundingClientRect();
+            const sameSettingsRow = Math.abs(verticalRect.top - horizontalRect.top) < 2
+              && vertical.closest('.table-inner-lines-row') === horizontal.closest('.table-inner-lines-row');
+            vertical.checked = false;
+            vertical.dispatchEvent(new Event('input', {bubbles:true}));
+            const verticalHidden = {
+              data:table.dataset.tableInnerVerticalLines,
+              collapse:table.style.borderCollapse,
+              outerLeft:table.rows[0].cells[0].style.borderLeftWidth,
+              innerLeft:table.rows[0].cells[1].style.borderLeftWidth,
+              outerRight:table.rows[0].cells[table.rows[0].cells.length - 1].style.borderRightWidth,
+              horizontal:table.rows[1].cells[0].style.borderTopWidth
+            };
+            horizontal.checked = false;
+            horizontal.dispatchEvent(new Event('input', {bubbles:true}));
+            const bothHidden = {
+              vertical:table.dataset.tableInnerVerticalLines,
+              horizontal:table.dataset.tableInnerHorizontalLines,
+              innerLeft:table.rows[0].cells[1].style.borderLeftWidth,
+              innerTop:table.rows[1].cells[0].style.borderTopWidth,
+              outerBottom:table.rows[table.rows.length - 1].cells[0].style.borderBottomWidth
+            };
+            const html = formatOutputHtml(getPersistablePreviewHtml());
+            importArticleHtml(html);
+            const restored = elements.preview.querySelector('table');
+            activeInsertedComponent = restored;
+            properties._sync();
+            const restoredState = {
+              vertical:document.querySelector('#tableInnerVerticalLines').checked,
+              horizontal:document.querySelector('#tableInnerHorizontalLines').checked,
+              innerLeft:restored.rows[0].cells[1].style.borderLeftWidth,
+              innerTop:restored.rows[1].cells[0].style.borderTopWidth
+            };
+            restored.removeAttribute('data-table-inner-vertical-lines');
+            restored.removeAttribute('data-table-inner-horizontal-lines');
+            properties._sync();
+            return {sameSettingsRow, verticalHidden, bothHidden, restored:restoredState,
+              legacy:{vertical:vertical.checked, horizontal:horizontal.checked}};
+        }""")
+        self.assertTrue(result['sameSettingsRow'])
+        self.assertEqual(result['verticalHidden'], {
+            'data': 'false', 'collapse': 'separate', 'outerLeft': '1px',
+            'innerLeft': '0px', 'outerRight': '1px', 'horizontal': '1px'})
+        self.assertEqual(result['bothHidden'], {
+            'vertical': 'false', 'horizontal': 'false', 'innerLeft': '0px',
+            'innerTop': '0px', 'outerBottom': '1px'})
+        self.assertEqual(result['restored'], {
+            'vertical': False, 'horizontal': False, 'innerLeft': '0px', 'innerTop': '0px'})
+        self.assertEqual(result['legacy'], {'vertical': True, 'horizontal': True})
+
+    def test_table_border_color_is_customizable_and_survives_round_trip(self):
+        result = self.page.evaluate("""() => {
+            elements.preview.innerHTML = insertedComponentHtml('table');
+            const table = elements.preview.querySelector('table');
+            activeInsertedComponent = table;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const cellColor = document.querySelector('#tableCellColor');
+            const borderColor = document.querySelector('#tableBorderColor');
+            const borderColorText = document.querySelector('#tableBorderColorText');
+            const sameSettingsRow = cellColor.closest('.row') === borderColor.closest('.row');
+            const hasPalette = Boolean(borderColor.closest('.color-row').querySelector('.swatch-palette'));
+            borderColorText.value = '#123456';
+            borderColorText.dispatchEvent(new Event('input', {bubbles:true}));
+            const changed = {
+              data:table.dataset.tableBorderColor,
+              top:table.rows[0].cells[0].style.borderTopColor,
+              inner:table.rows[1].cells[1].style.borderLeftColor
+            };
+            const html = formatOutputHtml(getPersistablePreviewHtml());
+            importArticleHtml(html);
+            const restored = elements.preview.querySelector('table');
+            activeInsertedComponent = restored;
+            properties._sync();
+            const roundTrip = {
+              control:borderColorText.value,
+              data:restored.dataset.tableBorderColor,
+              top:restored.rows[0].cells[0].style.borderTopColor
+            };
+            restored.removeAttribute('data-table-border-color');
+            restored.rows[0].cells[0].style.borderColor = '#654321';
+            properties._sync();
+            return {sameSettingsRow, hasPalette, changed, roundTrip, legacy:borderColorText.value};
+        }""")
+        self.assertTrue(result['sameSettingsRow'])
+        self.assertTrue(result['hasPalette'])
+        self.assertEqual(result['changed'], {
+            'data': '#123456', 'top': 'rgb(18, 52, 86)', 'inner': 'rgb(18, 52, 86)'})
+        self.assertEqual(result['roundTrip'], {
+            'control': '#123456', 'data': '#123456', 'top': 'rgb(18, 52, 86)'})
+        self.assertEqual(result['legacy'], '#654321')
 
     def test_toc_flag_adds_back_links_to_headings(self):
         result = self.page.evaluate("""() => {
@@ -1092,6 +1302,37 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result['initial'], ['rgb(18, 52, 86)', 'rgb(255, 0, 0)'])
         for stage in ('changed', 'exported', 'restored'):
             self.assertEqual(result[stage], ['rgb(18, 52, 86)', 'rgb(0, 128, 0)'])
+
+    def test_toc_heading_number_size_is_adjustable_and_backward_compatible(self):
+        result = self.page.evaluate("""() => {
+            elements.preview.innerHTML = insertedComponentHtml('toc') +
+              '<div data-inserted-component="heading"><h2 id="heading-1" style="font-size:30px"><span data-heading-content>見出し</span></h2></div>';
+            const toc = elements.preview.querySelector('[data-inserted-component="toc"]');
+            refreshTocComponent(toc);
+            toc.dataset.tocHeadingNumbers = 'true';
+            activeInsertedComponent = toc;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const control = document.querySelector('#tocHeadingNumberSize');
+            syncTocBackLinks();
+            const initial = {
+              control:control.value,
+              inline:elements.preview.querySelector('[data-toc-heading-number]').style.fontSize
+            };
+            control.value = '22';
+            control.dispatchEvent(new Event('input', {bubbles:true}));
+            const adjusted = elements.preview.querySelector('[data-toc-heading-number]').style.fontSize;
+            const html = formatOutputHtml(getPersistablePreviewHtml());
+            importArticleHtml(html);
+            const restoredToc = elements.preview.querySelector('[data-inserted-component="toc"]');
+            const restoredNumber = elements.preview.querySelector('[data-toc-heading-number]');
+            return {initial, adjusted, dataset:restoredToc.dataset.tocHeadingNumberSize,
+              restored:restoredNumber.style.fontSize};
+        }""")
+        self.assertEqual(result['initial'], {'control': '', 'inline': ''})
+        self.assertEqual(result['adjusted'], '22px')
+        self.assertEqual(result['dataset'], '22')
+        self.assertEqual(result['restored'], '22px')
 
     def test_toc_numbering_skips_headings_missing_from_toc(self):
         result = self.page.evaluate("""() => {
