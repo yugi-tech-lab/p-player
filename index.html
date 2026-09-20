@@ -2682,6 +2682,23 @@
         0 6px 14px rgba(2, 30, 34, 0.4);
     }
 
+    .preview-inner [contenteditable="true"]:has(> br[data-empty-editable-placeholder]) {
+      min-height: 1em;
+    }
+
+    .preview-inner [data-inserted-component][contenteditable="true"]:has(> br[data-empty-editable-placeholder]) {
+      min-width: min(8rem, 100%);
+    }
+
+    .last-updated {
+      color: rgba(255, 255, 255, 0.86);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-shadow: none;
+      white-space: nowrap;
+    }
+
     .brand-expansion {
       padding-left: 12px;
       border-left: 2px solid rgba(255, 255, 255, 0.55);
@@ -2698,8 +2715,13 @@
       }
 
       .brand-name,
-      .brand-expansion {
+      .brand-expansion,
+      .last-updated {
         display: block;
+      }
+
+      .last-updated {
+        margin-top: 7px;
       }
 
       .brand-expansion {
@@ -4701,7 +4723,7 @@
   <main class="app">
     <header>
       <div>
-        <h1 class="brand-title"><span class="brand-name">P-Player:ProtoPedia Layout Editor</span></h1>
+        <h1 class="brand-title"><span class="brand-name">P-Player:ProtoPedia Layout Editor</span><time class="last-updated" id="lastUpdated" hidden></time></h1>
         <p class="sub">本ツールは完全フリーです。使い方は<strong><a href="https://protopedia.net/prototype/8934" target="_blank" rel="noopener noreferrer">こちら</a></strong>。使用される方は宜しければ⇐の本ツール記事に👍頂けるとありがたいです。要望、バグ報告等は記事のコメント欄かXへお願いします。 製作者：Yugi Tech Lab</p>
       </div>
       <div class="status" id="status" aria-live="polite"></div>
@@ -6044,6 +6066,21 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
 
   <script src="./vendor/marked.umd.js"></script>
   <script>
+    function formatLastUpdatedDate(value) {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "";
+      const pad = (number) => String(number).padStart(2, "0");
+      return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())}`;
+    }
+
+    const lastUpdated = document.querySelector("#lastUpdated");
+    const lastUpdatedText = formatLastUpdatedDate(document.lastModified);
+    if (lastUpdated && lastUpdatedText) {
+      lastUpdated.dateTime = lastUpdatedText.replaceAll(".", "-");
+      lastUpdated.textContent = `最終更新 ${lastUpdatedText}`;
+      lastUpdated.hidden = false;
+    }
+
     const sampleImageSrc = "/pic/6660e21c-e61b-4c2f-9604-1ee8b64fd819.png";
     const defaults = {
       preset: "story",
@@ -7338,6 +7375,7 @@ ${bodyHtml}
 
     function capturePreviewEdits(historyOptions = {}) {
       if (previewComposing) return;
+      maintainEmptyEditableRegions(elements.preview);
       const componentProperties = document.querySelector(".inserted-component-properties");
       normalizeEmbeddedSideContent(elements.preview);
       syncEditableMediaTexts();
@@ -7513,6 +7551,9 @@ ${bodyHtml}
       });
       outputHolder.querySelectorAll("[data-side-content-slot]").forEach((element) => {
         element.removeAttribute("data-side-content-slot");
+      });
+      outputHolder.querySelectorAll("[data-empty-editable-placeholder]").forEach((element) => {
+        element.removeAttribute("data-empty-editable-placeholder");
       });
       outputHolder.querySelectorAll("[contenteditable]").forEach((element) => element.removeAttribute("contenteditable"));
       outputHolder.querySelectorAll(".is-document-block-active, .table-cell-selected").forEach((element) => {
@@ -8986,7 +9027,7 @@ ${bodyHtml}
               if (activeType === "beforeAfter") document.querySelector("#comparePreset").value = "custom";
               if (activeType === "note") document.querySelector("#notePreset").value = "custom";
               if (activeType === "quote") document.querySelector("#quotePreset").value = "custom";
-              if (["shape", "table", "list", "image", "imageText", "imagePair", "qa", "beforeAfter", "note", "quote"].includes(activeType)) {
+              if (["shape", "table", "list", "image", "imageText", "imagePair", "qa", "beforeAfter", "note", "quote", "toc"].includes(activeType)) {
                 componentProperties?._applySpecific?.();
               } else {
                 componentProperties?._apply?.();
@@ -10651,6 +10692,18 @@ ${bodyHtml}
       capturePreviewEdits();
       lastPreviewTyping = null;
     });
+    const isolatedEditableSelector = [
+      "figcaption", "[data-image-caption]", "[data-code-content]", "[data-embed-text]",
+      "[data-side-content-slot]", "[data-heading-content]", '[data-inserted-component="body"]',
+      '[data-inserted-component="note"]', '[data-inserted-component="quote"]',
+      "[data-qa-content]", "[data-accordion-title]", "[data-accordion-content]",
+      "[data-link-card-title]", "[data-link-card-description]",
+      "[data-video-bottom-text]", "[data-xpost-caption]", "td", "th", "li"
+    ].join(",");
+    const closestIsolatedEditable = (node) => {
+      const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+      return element?.closest?.(isolatedEditableSelector) || null;
+    };
     elements.preview.addEventListener("input", (event) => {
       if (previewComposing || event.isComposing) return;
       const accordionTitle = event.target.closest?.("[data-accordion-title]");
@@ -10682,8 +10735,7 @@ ${bodyHtml}
     });
     elements.preview.addEventListener("keydown", (event) => {
       if (previewComposing || event.isComposing || event.keyCode === 229) return;
-      const caption = event.target.closest?.("figcaption, [data-image-caption]");
-      const isolatedEditor = caption || event.target.closest?.("[data-code-content], [data-embed-text]");
+      const isolatedEditor = closestIsolatedEditable(event.target);
       if (isolatedEditor && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
         const range = document.createRange();
@@ -10719,6 +10771,25 @@ ${bodyHtml}
         && !handleTextComponentEnter(event.shiftKey, event.ctrlKey || event.metaKey)) insertPreviewLineBreak();
     });
     elements.preview.addEventListener("beforeinput", (event) => {
+      if (event.inputType?.startsWith("delete") && !previewComposing && !event.isComposing) {
+        const selection = window.getSelection();
+        if (selection.rangeCount && !selection.isCollapsed) {
+          const range = selection.getRangeAt(0);
+          const startEditor = closestIsolatedEditable(range.startContainer);
+          const endEditor = closestIsolatedEditable(range.endContainer);
+          if (startEditor && startEditor === endEditor && elements.preview.contains(startEditor)) {
+            event.preventDefault();
+            range.deleteContents();
+            maintainEmptyEditableRegions(startEditor.parentElement || elements.preview);
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            savedPreviewRange = range.cloneRange();
+            capturePreviewEdits({ typingTarget: startEditor });
+            return;
+          }
+        }
+      }
       if (event.inputType !== "insertParagraph" && event.inputType !== "insertLineBreak") {
         return;
       }
@@ -11966,8 +12037,16 @@ ${bodyHtml}
             <div class="field"><label for="tocPreset">スタイル</label><select id="tocPreset"><option value="simple">シンプル</option><option value="accent">アクセントライン</option><option value="header">カラーヘッダー</option><option value="numbered">番号強調</option><option value="dark">ダーク</option><option value="minimal">ミニマル</option></select></div>
             <div class="field"><label for="tocTitle">タイトル</label><input id="tocTitle" type="text" value="目次" maxlength="40"></div>
             <div class="field"><label for="tocLineHeight">行間</label><input id="tocLineHeight" type="number" min="1.2" max="3" step="0.1" value="2.1"></div>
+            <div class="field"><label class="check-item"><input id="tocFitContent" type="checkbox">横幅を内容に合わせる</label></div>
             <div class="field"><label class="check-item"><input id="tocBackLinks" type="checkbox">各見出しに「目次へ戻る」を表示</label></div>
             <div class="field"><label class="check-item"><input id="tocHeadingNumbers" type="checkbox">各見出しに番号を付ける</label></div>
+          </div>
+          <div class="row">
+            <div class="field"><label for="tocBackgroundColor">背景色</label><div class="color-row"><input id="tocBackgroundColor" type="color" value="#fbfcff"><input id="tocBackgroundColorText" type="text" value="#fbfcff" aria-label="目次の背景色コード"></div></div>
+            <div class="field"><label for="tocBorderColor">枠線色</label><div class="color-row"><input id="tocBorderColor" type="color" value="#d9dee8"><input id="tocBorderColorText" type="text" value="#d9dee8" aria-label="目次の枠線色コード"></div></div>
+            <div class="field"><label for="tocTitleColor">タイトル色</label><div class="color-row"><input id="tocTitleColor" type="color" value="#172033"><input id="tocTitleColorText" type="text" value="#172033" aria-label="目次のタイトル色コード"></div></div>
+            <div class="field"><label for="tocTextColor">本文色</label><div class="color-row"><input id="tocTextColor" type="color" value="#334155"><input id="tocTextColorText" type="text" value="#334155" aria-label="目次の本文色コード"></div></div>
+            <div class="field"><label for="tocAccentColor">アクセント色</label><div class="color-row"><input id="tocAccentColor" type="color" value="#64748b"><input id="tocAccentColorText" type="text" value="#64748b" aria-label="目次のアクセント色コード"></div></div>
           </div>
         </div>`;
       linkCardPropertyBlock.after(tocPropertyBlock);
@@ -11975,8 +12054,19 @@ ${bodyHtml}
         preset: tocPropertyBlock.querySelector("#tocPreset"),
         title: tocPropertyBlock.querySelector("#tocTitle"),
         lineHeight: tocPropertyBlock.querySelector("#tocLineHeight"),
+        fitContent: tocPropertyBlock.querySelector("#tocFitContent"),
         backLinks: tocPropertyBlock.querySelector("#tocBackLinks"),
-        headingNumbers: tocPropertyBlock.querySelector("#tocHeadingNumbers")
+        headingNumbers: tocPropertyBlock.querySelector("#tocHeadingNumbers"),
+        background: tocPropertyBlock.querySelector("#tocBackgroundColor"),
+        backgroundText: tocPropertyBlock.querySelector("#tocBackgroundColorText"),
+        border: tocPropertyBlock.querySelector("#tocBorderColor"),
+        borderText: tocPropertyBlock.querySelector("#tocBorderColorText"),
+        titleColor: tocPropertyBlock.querySelector("#tocTitleColor"),
+        titleColorText: tocPropertyBlock.querySelector("#tocTitleColorText"),
+        textColor: tocPropertyBlock.querySelector("#tocTextColor"),
+        textColorText: tocPropertyBlock.querySelector("#tocTextColorText"),
+        accent: tocPropertyBlock.querySelector("#tocAccentColor"),
+        accentText: tocPropertyBlock.querySelector("#tocAccentColorText")
       };
       componentPage.appendChild(section);
       componentPage.appendChild(dialog);
@@ -12503,11 +12593,18 @@ ${bodyHtml}
         if (componentType === "toc") {
           tocControls.preset.value = ["simple", "accent", "header", "numbered", "dark", "minimal"].includes(component.dataset.tocPreset)
             ? component.dataset.tocPreset : "simple";
+          const tocPreset = tocDesignPresets[tocControls.preset.value];
           tocControls.title.value = component.dataset.tocTitle || component.querySelector("[data-toc-title]")?.textContent || "目次";
           const tocList = component.querySelector("[data-toc-list]");
           tocControls.lineHeight.value = component.dataset.tocLineHeight || tocList?.style.lineHeight || "1.9";
+          tocControls.fitContent.checked = component.dataset.tocFitContent === "true";
           tocControls.backLinks.checked = component.dataset.tocBackLinks === "true";
           tocControls.headingNumbers.checked = component.dataset.tocHeadingNumbers === "true";
+          setColorControl(tocControls.background, tocControls.backgroundText, component.dataset.tocBackground || tocPreset.background);
+          setColorControl(tocControls.border, tocControls.borderText, component.dataset.tocBorder || tocPreset.border.match(/#[0-9a-f]{6}/i)?.[0] || "transparent");
+          setColorControl(tocControls.titleColor, tocControls.titleColorText, component.dataset.tocTitleColor || tocPreset.title);
+          setColorControl(tocControls.textColor, tocControls.textColorText, component.dataset.tocTextColor || tocPreset.text);
+          setColorControl(tocControls.accent, tocControls.accentText, component.dataset.tocAccent || tocPreset.accent);
         }
         if (componentType === "accordion") {
           const summary = component.querySelector(":scope > [data-accordion-summary]");
@@ -13860,10 +13957,42 @@ ${bodyHtml}
           applyCodeSettings(component);
         }
         if (type === "toc") {
+          [
+            [tocControls.background, tocControls.backgroundText],
+            [tocControls.border, tocControls.borderText],
+            [tocControls.titleColor, tocControls.titleColorText],
+            [tocControls.textColor, tocControls.textColorText],
+            [tocControls.accent, tocControls.accentText]
+          ].forEach(([colorInput, textInput]) => {
+            if (event?.target === colorInput) textInput.value = colorInput.value;
+            if (event?.target === textInput && /^#[0-9a-f]{6}$/i.test(textInput.value.trim())) {
+              colorInput.value = textInput.value.trim();
+            }
+          });
           component.dataset.tocPreset = ["simple", "accent", "header", "numbered", "dark", "minimal"].includes(tocControls.preset.value)
             ? tocControls.preset.value : "simple";
+          if (event?.target === tocControls.preset) {
+            ["tocBackground", "tocBorder", "tocTitleColor", "tocTextColor", "tocAccent"].forEach((key) => delete component.dataset[key]);
+            const preset = tocDesignPresets[component.dataset.tocPreset];
+            const resetColorControl = (colorInput, textInput, value) => {
+              textInput.value = value;
+              if (/^#[0-9a-f]{6}$/i.test(value)) colorInput.value = value;
+            };
+            resetColorControl(tocControls.background, tocControls.backgroundText, preset.background);
+            resetColorControl(tocControls.border, tocControls.borderText, preset.border.match(/#[0-9a-f]{6}/i)?.[0] || "transparent");
+            resetColorControl(tocControls.titleColor, tocControls.titleColorText, preset.title);
+            resetColorControl(tocControls.textColor, tocControls.textColorText, preset.text);
+            resetColorControl(tocControls.accent, tocControls.accentText, preset.accent);
+          } else {
+            component.dataset.tocBackground = colorValue(tocControls.backgroundText.value, tocControls.background.value);
+            component.dataset.tocBorder = colorValue(tocControls.borderText.value, tocControls.border.value);
+            component.dataset.tocTitleColor = colorValue(tocControls.titleColorText.value, tocControls.titleColor.value);
+            component.dataset.tocTextColor = colorValue(tocControls.textColorText.value, tocControls.textColor.value);
+            component.dataset.tocAccent = colorValue(tocControls.accentText.value, tocControls.accent.value);
+          }
           component.dataset.tocTitle = tocControls.title.value.trim() || "目次";
           component.dataset.tocLineHeight = String(Math.max(1.2, Math.min(3, Number(tocControls.lineHeight.value) || 2.1)));
+          component.dataset.tocFitContent = String(tocControls.fitContent.checked);
           component.dataset.tocBackLinks = String(tocControls.backLinks.checked);
           component.dataset.tocHeadingNumbers = String(tocControls.headingNumbers.checked);
           normalizeTocDesign(component);
@@ -14562,7 +14691,7 @@ ${bodyHtml}
         input.addEventListener("input", applyComponentSpecificSettings);
         input.addEventListener("change", applyComponentSpecificSettings);
       });
-      [shapeColorText, ...Object.values(shapeControls), tocControls.preset, tocControls.title, tocControls.lineHeight, tocControls.backLinks, tocControls.headingNumbers].forEach((input) => {
+      [shapeColorText, ...Object.values(shapeControls), ...Object.values(tocControls)].forEach((input) => {
         input.classList.add("component-property-input");
         input.addEventListener("input", applyComponentSpecificSettings);
         input.addEventListener("change", applyComponentSpecificSettings);
@@ -15004,21 +15133,22 @@ ${bodyHtml}
       });
     }
 
-    function normalizeTocDesign(root) {
-      const components = root?.matches?.('[data-inserted-component="toc"]')
-        ? [root]
-        : Array.from(root?.querySelectorAll?.('[data-inserted-component="toc"]') || []);
-      const presets = {
+    const tocDesignPresets = {
         simple: { background: "#fbfcff", border: "1px solid #d9dee8", borderLeft: "1px solid #d9dee8", radius: "8px", shadow: "none", padding: "14px 16px", title: "#172033", text: "#334155", accent: "#64748b", headerBackground: "transparent", headerMargin: "0 0 8px", headerPadding: "0", headerRadius: "0", listStyle: "decimal", listPadding: "20px" },
         accent: { background: "#eff6ff", border: "1px solid #bfdbfe", borderLeft: "5px solid #2563eb", radius: "8px", shadow: "none", padding: "14px 16px", title: "#1d4ed8", text: "#1e3a8a", accent: "#2563eb", headerBackground: "transparent", headerMargin: "0 0 8px", headerPadding: "0", headerRadius: "0", listStyle: "decimal", listPadding: "20px" },
         header: { background: "#ffffff", border: "1px solid #99f6e4", borderLeft: "1px solid #99f6e4", radius: "10px", shadow: "0 3px 10px rgba(15,118,110,.10)", padding: "14px 16px", title: "#ffffff", text: "#134e4a", accent: "#0f766e", headerBackground: "#0f766e", headerMargin: "-14px -16px 10px", headerPadding: "9px 12px", headerRadius: "9px 9px 0 0", listStyle: "decimal", listPadding: "20px" },
         numbered: { background: "#fffbeb", border: "1px solid #fcd34d", borderLeft: "1px solid #fcd34d", radius: "10px", shadow: "none", padding: "14px 16px", title: "#92400e", text: "#78350f", accent: "#d97706", headerBackground: "transparent", headerMargin: "0 0 8px", headerPadding: "0", headerRadius: "0", listStyle: "decimal-leading-zero", listPadding: "30px" },
         dark: { background: "#172033", border: "1px solid #475569", borderLeft: "1px solid #475569", radius: "10px", shadow: "0 5px 16px rgba(15,23,42,.18)", padding: "14px 16px", title: "#f8fafc", text: "#e2e8f0", accent: "#22d3ee", headerBackground: "#263247", headerMargin: "-14px -16px 10px", headerPadding: "9px 12px", headerRadius: "9px 9px 0 0", listStyle: "decimal", listPadding: "20px" },
         minimal: { background: "transparent", border: "0", borderLeft: "0", radius: "0", shadow: "none", padding: "10px 0", title: "#172033", text: "#475569", accent: "#64748b", headerBackground: "transparent", headerMargin: "0 0 6px", headerPadding: "0 0 6px", headerRadius: "0", listStyle: "none", listPadding: "0" }
-      };
+    };
+
+    function normalizeTocDesign(root) {
+      const components = root?.matches?.('[data-inserted-component="toc"]')
+        ? [root]
+        : Array.from(root?.querySelectorAll?.('[data-inserted-component="toc"]') || []);
       components.forEach((component) => {
-        const presetName = presets[component.dataset.tocPreset] ? component.dataset.tocPreset : "simple";
-        const preset = presets[presetName];
+        const presetName = tocDesignPresets[component.dataset.tocPreset] ? component.dataset.tocPreset : "simple";
+        const preset = tocDesignPresets[presetName];
         const header = component.querySelector(":scope > [data-toc-header], :scope > div");
         const title = header?.querySelector("[data-toc-title], strong");
         const button = header?.querySelector("[data-toc-refresh]");
@@ -15027,6 +15157,12 @@ ${bodyHtml}
         const lineHeight = Number.isFinite(storedLineHeight)
           ? Math.max(1.2, Math.min(3, storedLineHeight))
           : 2.1;
+        const backgroundColor = component.dataset.tocBackground || preset.background;
+        const borderColor = component.dataset.tocBorder || preset.border.match(/#[0-9a-f]{6}/i)?.[0] || "transparent";
+        const titleColor = component.dataset.tocTitleColor || preset.title;
+        const textColor = component.dataset.tocTextColor || preset.text;
+        const accentColor = component.dataset.tocAccent || preset.accent;
+        const fitContent = component.dataset.tocFitContent === "true";
         component.dataset.tocPreset = presetName;
         component.dataset.tocLineHeight = String(lineHeight);
         if (header) header.dataset.tocHeader = "true";
@@ -15035,29 +15171,37 @@ ${bodyHtml}
           title.contentEditable = "false";
           component.dataset.tocTitle = component.dataset.tocTitle || title.textContent.trim() || "目次";
           title.textContent = component.dataset.tocTitle;
-          title.style.color = preset.title;
+          title.style.color = titleColor;
           title.style.fontSize = "15px";
         }
         component.style.margin = "14px 0";
+        component.style.display = fitContent ? "inline-block" : "block";
+        component.style.width = fitContent ? "fit-content" : "auto";
+        component.style.maxWidth = "100%";
+        component.style.boxSizing = "border-box";
+        component.style.verticalAlign = "top";
         component.style.padding = preset.padding;
-        component.style.background = preset.background;
+        component.style.background = backgroundColor;
         component.style.border = preset.border;
         component.style.borderLeft = preset.borderLeft;
+        component.style.borderColor = borderColor;
+        if (presetName === "accent") component.style.borderLeftColor = accentColor;
         component.style.borderRadius = preset.radius;
         component.style.boxShadow = preset.shadow;
         if (header) {
-          header.style.background = preset.headerBackground;
+          header.style.background = presetName === "header" || presetName === "dark"
+            ? accentColor : preset.headerBackground;
           header.style.margin = preset.headerMargin;
           header.style.padding = preset.headerPadding;
           header.style.borderRadius = preset.headerRadius;
         }
         if (button) {
-          button.style.color = presetName === "header" || presetName === "dark" ? preset.title : preset.accent;
+          button.style.color = presetName === "header" || presetName === "dark" ? titleColor : accentColor;
           button.style.background = presetName === "header" || presetName === "dark" ? "rgba(255,255,255,.12)" : "#ffffff";
-          button.style.borderColor = presetName === "header" || presetName === "dark" ? "rgba(255,255,255,.35)" : preset.accent;
+          button.style.borderColor = presetName === "header" || presetName === "dark" ? "rgba(255,255,255,.35)" : accentColor;
         }
         if (list) {
-          list.style.color = preset.text;
+          list.style.color = textColor;
           list.style.listStyleType = preset.listStyle;
           list.style.paddingLeft = preset.listPadding;
           list.style.lineHeight = String(lineHeight);
@@ -15081,6 +15225,26 @@ ${bodyHtml}
       });
     }
 
+    function maintainEmptyEditableRegions(root = elements.preview) {
+      if (!root?.querySelectorAll) return;
+      root.querySelectorAll('[contenteditable="true"]').forEach((editable) => {
+        if (editable.matches("ol, ul, table, tbody, thead, tfoot, tr")
+          || editable.querySelector(':scope [contenteditable="true"]')) return;
+        const placeholderBreaks = Array.from(editable.querySelectorAll(":scope > br[data-empty-editable-placeholder]"));
+        const hasText = /[^\s\u200b-\u200d\ufeff]/u.test(editable.textContent || "");
+        const hasNonBreakContent = Boolean(editable.querySelector(
+          ":scope > img, :scope > video, :scope > audio, :scope > iframe, :scope > hr, :scope > table, :scope > ul, :scope > ol"
+        ));
+        if (hasText || hasNonBreakContent) {
+          placeholderBreaks.forEach((placeholder) => placeholder.remove());
+          return;
+        }
+        const lineBreak = editable.querySelector(":scope > br") || document.createElement("br");
+        lineBreak.dataset.emptyEditablePlaceholder = "true";
+        if (!lineBreak.parentElement) editable.appendChild(lineBreak);
+      });
+    }
+
     function syncTocBackLinks(root = elements.preview) {
       if (!root?.querySelectorAll) return;
       const tocComponents = Array.from(root.querySelectorAll('[data-inserted-component="toc"]'));
@@ -15088,17 +15252,22 @@ ${bodyHtml}
       const headings = Array.from(root.querySelectorAll(
         '[data-inserted-component="heading"] h2, [data-inserted-component="heading"] h3, [data-inserted-component="heading"] h4'
       ));
-      const numberedHeadingIds = new Set();
-      tocComponents.filter((component) => component.dataset.tocHeadingNumbers === "true").forEach((component) => {
-        component.querySelectorAll('[data-toc-list] a[href^="#"]').forEach((link) => {
+      const linkedHeadingIds = (component) => {
+        const ids = new Set();
+        component?.querySelectorAll('[data-toc-list] a[href^="#"]').forEach((link) => {
           const fragment = link.getAttribute('href').slice(1);
           if (!fragment) return;
           try {
-            numberedHeadingIds.add(decodeURIComponent(fragment));
+            ids.add(decodeURIComponent(fragment));
           } catch {
-            numberedHeadingIds.add(fragment);
+            ids.add(fragment);
           }
         });
+        return ids;
+      };
+      const numberedHeadingIds = new Set();
+      tocComponents.filter((component) => component.dataset.tocHeadingNumbers === "true").forEach((component) => {
+        linkedHeadingIds(component).forEach((id) => numberedHeadingIds.add(id));
       });
       root.querySelectorAll('[data-toc-heading-number]').forEach((number) => number.remove());
       headings.filter((heading) => numberedHeadingIds.has(heading.id)).forEach((heading, index) => {
@@ -15145,6 +15314,7 @@ ${bodyHtml}
         headings.forEach(removeBackLink);
         return;
       }
+      const backLinkedHeadingIds = linkedHeadingIds(activeToc);
 
       if (!activeToc.id) {
         const existingIds = new Set(Array.from(root.querySelectorAll("[id]"), (element) => element.id));
@@ -15155,6 +15325,7 @@ ${bodyHtml}
       }
       headings.forEach((heading) => {
         removeBackLink(heading);
+        if (!backLinkedHeadingIds.has(heading.id)) return;
         const prefix = heading.querySelector(":scope > [data-heading-prefix]");
         const content = heading.querySelector(":scope > [data-heading-content]");
         if (!content) return;

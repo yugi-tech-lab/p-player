@@ -34,6 +34,23 @@ class EditorTests(unittest.TestCase):
     def test_startup(self):
         self.assertGreater(self.page.evaluate("elements.preview.children.length"), 0)
 
+    def test_header_shows_automatic_last_updated_date(self):
+        result = self.page.evaluate("""() => {
+            const label = document.querySelector('#lastUpdated');
+            return {
+              hidden: label.hidden,
+              text: label.textContent,
+              dateTime: label.dateTime,
+              knownDate: formatLastUpdatedDate('2026-09-20T12:34:56'),
+              invalidDate: formatLastUpdatedDate('not-a-date')
+            };
+        }""")
+        self.assertFalse(result['hidden'])
+        self.assertRegex(result['text'], r'^最終更新 \d{4}\.\d{2}\.\d{2}$')
+        self.assertRegex(result['dateTime'], r'^\d{4}-\d{2}-\d{2}$')
+        self.assertEqual(result['knownDate'], '2026.09.20')
+        self.assertEqual(result['invalidDate'], '')
+
     def test_image_text_bubble_tail_is_visible_on_first_enable(self):
         for side in ('left', 'right'):
             for existing_tail in (False, True):
@@ -659,6 +676,54 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["spotWarning"]["icon"], "⚠️")
         self.assertIn('data-note-layout="spot"', result["savedHtml"])
 
+    def test_empty_text_component_keeps_layout_and_accepts_text_again(self):
+        self.page.evaluate("""() => {
+            elements.preview.innerHTML = insertedComponentHtml('note');
+            const note = elements.preview.firstElementChild;
+            activeInsertedComponent = note;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const layout = document.querySelector('#noteWidthMode');
+            layout.value = 'spot';
+            layout.dispatchEvent(new Event('change', {bubbles:true}));
+        }""")
+        note = self.page.locator('[data-inserted-component="note"]')
+        note.click()
+        self.page.keyboard.press('Control+A')
+        selected = self.page.evaluate("""() => {
+            const range = window.getSelection().getRangeAt(0);
+            const note = elements.preview.querySelector('[data-inserted-component="note"]');
+            return {inside:note.contains(range.commonAncestorContainer), text:range.toString()};
+        }""")
+        self.assertTrue(selected['inside'])
+        self.assertEqual(selected['text'], 'メモや注意事項を入力')
+        self.page.keyboard.press('Backspace')
+        empty = self.page.evaluate("""() => {
+            const note = elements.preview.querySelector('[data-inserted-component="note"]');
+            const rect = note?.getBoundingClientRect();
+            return {exists:!!note, layout:note?.dataset.noteLayout, display:note?.style.display,
+              placeholder:!!note?.querySelector(':scope > br[data-empty-editable-placeholder]'),
+              width:rect?.width || 0, height:rect?.height || 0,
+              outputHasMarker:formatOutputHtml(getPersistablePreviewHtml()).includes('data-empty-editable-placeholder')};
+        }""")
+        self.assertTrue(empty['exists'])
+        self.assertEqual(empty['layout'], 'spot')
+        self.assertEqual(empty['display'], 'inline-block')
+        self.assertTrue(empty['placeholder'])
+        self.assertGreaterEqual(empty['width'], 128)
+        self.assertGreater(empty['height'], 0)
+        self.assertFalse(empty['outputHasMarker'])
+
+        self.page.keyboard.type('再入力')
+        restored = self.page.evaluate("""() => {
+            const note = elements.preview.querySelector('[data-inserted-component="note"]');
+            return {text:note.textContent, layout:note.dataset.noteLayout,
+              placeholder:!!note.querySelector('[data-empty-editable-placeholder]')};
+        }""")
+        self.assertEqual(restored['text'], '再入力')
+        self.assertEqual(restored['layout'], 'spot')
+        self.assertFalse(restored['placeholder'])
+
     def test_image_count_conversion_preserves_legacy_pair_content(self):
         result = self.page.evaluate("""() => {
             const holder = document.createElement('div');
@@ -822,6 +887,7 @@ class EditorTests(unittest.TestCase):
             holder.innerHTML = insertedComponentHtml('toc');
             const toc = holder.firstElementChild;
             elements.preview.replaceChildren(toc, makeHeading('見出しA'), makeHeading('見出しB'));
+            refreshTocComponent(toc);
             activeInsertedComponent = toc;
             const properties = document.querySelector('.inserted-component-properties');
             properties._sync();
@@ -865,6 +931,98 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["disabledCount"], 0)
         self.assertEqual(result["disabledDisplay"], "")
         self.assertEqual(result["afterTocRemoval"], 0)
+
+    def test_toc_back_links_only_on_listed_headings(self):
+        result = self.page.evaluate("""() => {
+            elements.preview.innerHTML = insertedComponentHtml('toc') +
+              ['Alpha', 'Beta', 'Gamma'].map((text, i) =>
+                `<div data-inserted-component="heading"><h2 id="heading-${i+1}"><span data-heading-content>${text}</span></h2></div>`).join('');
+            const toc = elements.preview.querySelector('[data-inserted-component="toc"]');
+            refreshTocComponent(toc);
+            toc.querySelector('a[href="#heading-2"]').closest('li').remove();
+            activeInsertedComponent = toc;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const flag = document.querySelector('#tocBackLinks');
+            flag.checked = true;
+            flag.dispatchEvent(new Event('change', {bubbles:true}));
+            const links = () => [...elements.preview.querySelectorAll('h2')].map(
+              heading => heading.querySelector('[data-toc-back-link]')?.textContent || '');
+            const initial = links();
+            const html = formatOutputHtml(getPersistablePreviewHtml());
+            importArticleHtml(html);
+            return {initial, restored:links()};
+        }""")
+        self.assertEqual(result['initial'], ['↑ 目次', '', '↑ 目次'])
+        self.assertEqual(result['restored'], ['↑ 目次', '', '↑ 目次'])
+
+    def test_toc_fit_content_and_custom_colors(self):
+        result = self.page.evaluate("""() => {
+            elements.preview.innerHTML = insertedComponentHtml('toc') +
+              '<div data-inserted-component="heading"><h2 id="heading-1"><span data-heading-content>短い見出し</span></h2></div>';
+            const toc = elements.preview.querySelector('[data-inserted-component="toc"]');
+            refreshTocComponent(toc);
+            activeInsertedComponent = toc;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const set = (id, value) => {
+              const control = document.querySelector(id);
+              if (control.type === 'checkbox') control.checked = value;
+              else control.value = value;
+              control.dispatchEvent(new Event('input', {bubbles:true}));
+            };
+            set('#tocFitContent', true);
+            set('#tocBackgroundColorText', '#112233');
+            set('#tocBorderColorText', '#445566');
+            set('#tocTitleColorText', '#778899');
+            set('#tocTextColorText', '#aabbcc');
+            set('#tocAccentColorText', '#cc3300');
+            const title = toc.querySelector('[data-toc-title]');
+            const list = toc.querySelector('[data-toc-list]');
+            const button = toc.querySelector('[data-toc-refresh]');
+            const custom = {
+              fit: toc.dataset.tocFitContent,
+              display: toc.style.display,
+              narrower: toc.getBoundingClientRect().width < elements.preview.getBoundingClientRect().width,
+              background: toc.style.backgroundColor,
+              border: toc.style.borderColor,
+              title: title.style.color,
+              text: list.style.color,
+              accent: button.style.color
+            };
+            const html = formatOutputHtml(getPersistablePreviewHtml());
+            importArticleHtml(html);
+            const restoredToc = elements.preview.querySelector('[data-inserted-component="toc"]');
+            const restored = {
+              fit: restoredToc.dataset.tocFitContent,
+              display: restoredToc.style.display,
+              background: restoredToc.dataset.tocBackground,
+              title: restoredToc.dataset.tocTitleColor
+            };
+            activeInsertedComponent = restoredToc;
+            properties._sync();
+            document.querySelector('#tocPreset').value = 'accent';
+            document.querySelector('#tocPreset').dispatchEvent(new Event('change', {bubbles:true}));
+            return {custom, restored, presetReset: {
+              hasCustom: restoredToc.hasAttribute('data-toc-background'),
+              background: restoredToc.style.backgroundColor,
+              control: document.querySelector('#tocBackgroundColorText').value
+            }};
+        }""")
+        self.assertEqual(result['custom']['fit'], 'true')
+        self.assertEqual(result['custom']['display'], 'inline-block')
+        self.assertTrue(result['custom']['narrower'])
+        self.assertEqual(result['custom']['background'], 'rgb(17, 34, 51)')
+        self.assertEqual(result['custom']['border'], 'rgb(68, 85, 102)')
+        self.assertEqual(result['custom']['title'], 'rgb(119, 136, 153)')
+        self.assertEqual(result['custom']['text'], 'rgb(170, 187, 204)')
+        self.assertEqual(result['custom']['accent'], 'rgb(204, 51, 0)')
+        self.assertEqual(result['restored'], {
+            'fit': 'true', 'display': 'inline-block',
+            'background': '#112233', 'title': '#778899'})
+        self.assertFalse(result['presetReset']['hasCustom'])
+        self.assertEqual(result['presetReset']['background'], 'rgb(239, 246, 255)')
+        self.assertEqual(result['presetReset']['control'], '#eff6ff')
 
     def test_toc_heading_numbers_toggle_reorder_and_html_round_trip(self):
         result = self.page.evaluate("""() => {
