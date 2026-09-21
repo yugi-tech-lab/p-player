@@ -12133,6 +12133,20 @@ ${bodyHtml}
       videoPropertyBlock.after(documentPropertyBlock);
       const documentControls = Object.fromEntries(['url', 'title', 'caption', 'height'].map((key) =>
         [key, documentPropertyBlock.querySelector(`#document${key[0].toUpperCase()}${key.slice(1)}`)]));
+      // Keep the notice beside URL fields, including dynamically built properties.
+      queueMicrotask(() => {
+        for (const id of ['imagePath', 'imagePath2', 'componentImagePath3', 'insertedComponentImageUrl',
+          'xpostUrl', 'xpostUrl2', 'xpostUrl3', 'xpostSideImageUrl', 'videoUrl', 'documentUrl', 'linkCardImageUrl']) {
+          const input = document.getElementById(id);
+          if (!input) continue;
+          const note = document.createElement('small');
+          note.id = `${id}NetworkNote`;
+          note.textContent = '表示時に画像・動画などの提供元へ通信します。';
+          note.style.cssText = 'display:block;color:#64748b;font-size:11px;line-height:1.5;';
+          input.after(note);
+          input.setAttribute('aria-describedby', [input.getAttribute('aria-describedby'), note.id].filter(Boolean).join(' '));
+        }
+      });
       const accordionPropertyBlock = document.createElement("div");
       accordionPropertyBlock.className = "field list-component-settings accordion-component-settings";
       accordionPropertyBlock.innerHTML = `<label>折りたたみ設定</label>
@@ -15204,7 +15218,6 @@ ${bodyHtml}
     let twitterWidgetScriptPromise = null;
     const embedRenderVersions = new WeakMap();
     function loadTwitterWidgetScript() {
-      if (!articleExternalContentAllowed) return Promise.reject(new Error('外部コンテンツの読込は停止中です'));
       if (window.twttr?.widgets) return Promise.resolve(window.twttr);
       if (!twitterWidgetScriptPromise) {
         twitterWidgetScriptPromise = new Promise((resolve, reject) => {
@@ -16194,7 +16207,6 @@ ${bodyHtml}
     function importMarkdownText(markdown, fileName = "Markdown", options = {}) {
       checkArticleTextSize(markdown);
       if ((String(markdown).match(/\n/g) || []).length > 20000) throw new Error('Markdownの行数が多すぎます');
-      pauseImportedExternalContent();
       if (!window.marked?.lexer) {
         setStatus("Markdown変換ライブラリを読み込めませんでした");
         return false;
@@ -17656,7 +17668,6 @@ ${bodyHtml}
       checkArticleStructure(payload);
       const safeHtml = sanitizeArticleMarkup(typeof payload.previewHtml === 'string' ? payload.previewHtml : '');
       capturePreviewEdits();
-      pauseImportedExternalContent();
       applySettings(payload.settings || payload, { renderPreview: false });
       formattedPreviewHtml = sanitizeArticleMarkup(safeHtml, { preview: true });
       render({ forceReset: true });
@@ -18262,7 +18273,6 @@ ${bodyHtml}
 
     function importArticleHtml(html, sourceName = "読み込んだHTML") {
       sanitizeArticleMarkup(html); // Validate limits before changing the current article.
-      pauseImportedExternalContent();
       const cleanedHtml = sanitizeImportedArticleHtml(html);
       const contentCheck = document.createElement("div");
       contentCheck.innerHTML = cleanedHtml;
@@ -18363,7 +18373,6 @@ ${bodyHtml}
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('記事JSONの形式が不正です');
       checkArticleStructure(payload);
       const safeHtml = sanitizeArticleMarkup(typeof payload.articleHtml === 'string' ? payload.articleHtml : payload.previewHtml || '');
-      pauseImportedExternalContent();
       const settings = payload.settings || payload;
       const articleHtml = typeof payload.articleHtml === "string" ? payload.articleHtml : payload.previewHtml;
       const isFullSave = payload.saveType === "full"

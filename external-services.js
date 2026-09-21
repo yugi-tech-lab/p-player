@@ -84,8 +84,7 @@ function renderExternalDocument(component) {
     const wrap = document.createElement('div');
     wrap.style.cssText = `position:relative;width:100%;height:${height}px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;box-sizing:border-box;`;
     const frame = document.createElement('iframe');
-    if (articleExternalContentAllowed) frame.src = embed;
-    else frame.dataset.securitySrc = embed;
+    frame.src = embed;
     frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation');
     frame.setAttribute('referrerpolicy', 'no-referrer');
     frame.title = title;
@@ -121,7 +120,6 @@ function renderExternalDocument(component) {
 
 const externalFetchVersions = new WeakMap();
 async function resolveDocumentPreview(component) {
-  if (!articleExternalContentAllowed) { setStatus('記事上部の「外部コンテンツを読み込む」を押してください'); return false; }
   const info = externalDocumentInfo(component?.dataset.documentUrl);
   if (!info || !component.isConnected) return false;
   if (info.embedUrl) { renderExternalDocument(component); return true; }

@@ -50,7 +50,7 @@ class SecurityTests(unittest.TestCase):
                 self.assertEqual(self.page.locator('#preview [onerror]').count(), 0)
                 self.assertNotIn('onerror', self.page.evaluate('window.securityExport'))
 
-    def test_import_blocks_network_until_explicit_load_and_export_preserves_urls(self):
+    def test_import_loads_external_content_without_prompt_and_preserves_urls(self):
         result = self.page.evaluate('''() => {
           importArticleHtml('<p>test</p><img src="https://audit.invalid/pixel">'
             + '<div style="background-image:url(https://audit.invalid/css)">test</div>'
@@ -60,12 +60,11 @@ class SecurityTests(unittest.TestCase):
             exported:formatOutputHtml(getPersistablePreviewHtml())};
         }''')
         self.page.wait_for_timeout(150)
-        self.assertIsNone(result['src'])
-        self.assertEqual(result['deferred'], 'https://audit.invalid/pixel')
+        self.assertEqual(result['src'], 'https://audit.invalid/pixel')
+        self.assertIsNone(result['deferred'])
         self.assertIn('src="https://audit.invalid/pixel"', result['exported'])
-        self.assertEqual(self.requests, [])
-        self.page.locator('#articleExternalContentNotice button').click()
-        self.page.wait_for_timeout(150)
+        self.assertEqual(self.page.locator('#articleExternalContentNotice').count(), 0)
+        self.assertNotIn('https://audit.invalid/css', self.requests)
         self.assertIn('https://audit.invalid/pixel', self.requests)
 
     def test_styles_urls_and_duplicate_editor_ids_are_restricted(self):
@@ -85,11 +84,11 @@ class SecurityTests(unittest.TestCase):
         self.assertIsNone(result['href'])
         self.assertIn('paint', result['contain'])
 
-    def test_network_stays_paused_for_background_markdown_and_card_edits(self):
+    def test_auto_loading_survives_markdown_and_card_edits(self):
         result = self.page.evaluate('''() => {
           importArticleHtml('<table background="https://audit.invalid/background"><tr><td>test</td></tr></table>');
           importMarkdownText('![test](https://audit.invalid/markdown)');
-          const markdownUrl = elements.preview.querySelector('img').dataset.securitySrc;
+          const markdownUrl = elements.preview.querySelector('img').getAttribute('src');
           const markdownExport = formatOutputHtml(getPersistablePreviewHtml());
           const t = document.createElement('template');
           t.innerHTML = insertedComponentHtml('linkCard');
@@ -101,10 +100,12 @@ class SecurityTests(unittest.TestCase):
           document.querySelector('.inserted-component-properties')._sync();
           const control = document.querySelector('#linkCardRadius');
           control.value = '12'; control.dispatchEvent(new Event('input', {bubbles:true}));
-          return {markdownUrl, markdownExport, cardUrl:activeInsertedComponent.querySelector('img').dataset.securitySrc};
+          return {markdownUrl, markdownExport, cardUrl:activeInsertedComponent.querySelector('img').getAttribute('src')};
         }''')
         self.page.wait_for_timeout(150)
-        self.assertEqual(self.requests, [])
+        self.assertNotIn('https://audit.invalid/background', self.requests)
+        self.assertIn('https://audit.invalid/markdown', self.requests)
+        self.assertIn('https://audit.invalid/card', self.requests)
         self.assertEqual(result['markdownUrl'], 'https://audit.invalid/markdown')
         self.assertIn('https://audit.invalid/markdown', result['markdownExport'])
         self.assertEqual(result['cardUrl'], 'https://audit.invalid/card')
@@ -112,10 +113,7 @@ class SecurityTests(unittest.TestCase):
     def test_effective_iframe_url_must_be_trusted(self):
         result = self.page.evaluate('''() => {
           const input = '<iframe src="https://www.youtube.com/embed/abcdefghijk" data-security-src="https://audit.invalid/frame"></iframe>';
-          return [true,false].flatMap(allowed => {
-            articleExternalContentAllowed = allowed;
-            return [true,false].map(preview => sanitizeArticleMarkup(input, {preview}));
-          });
+          return [true,false].map(preview => sanitizeArticleMarkup(input, {preview}));
         }''')
         self.assertTrue(all('<iframe' not in html for html in result))
 

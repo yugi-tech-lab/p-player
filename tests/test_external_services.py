@@ -72,7 +72,7 @@ class ExternalServiceTests(unittest.TestCase):
           const payload = JSON.parse(await createArticlePayloadBlob().text());
           applyArticlePayload(payload);
           const jsonPart = elements.preview.querySelector('[data-inserted-component="document"]');
-          const json = {url:jsonPart.dataset.documentUrl, frame:jsonPart.querySelector('iframe').dataset.securitySrc};
+          const json = {url:jsonPart.dataset.documentUrl, frame:jsonPart.querySelector('iframe').src};
           importArticleHtml(exported);
           activeInsertedComponent = elements.preview.querySelector('[data-inserted-component="document"]');
           properties._sync();
@@ -172,7 +172,6 @@ class ExternalServiceTests(unittest.TestCase):
             for (const [url, src] of [
               ['https://speakerdeck.com/demo/deck', 'https://speakerdeck.com/player/0123456789abcdef0123456789abcdef'],
               ['https://www.slideshare.net/slideshow/demo/12345', 'https://www.slideshare.net/slideshow/embed_code/key/abcd']]) {
-              articleExternalContentAllowed = true;
               elements.preview.innerHTML = insertedComponentHtml('document');
               const component = elements.preview.firstElementChild;
               component.dataset.documentUrl = url;
@@ -182,7 +181,7 @@ class ExternalServiceTests(unittest.TestCase):
               const exported = formatOutputHtml(getPersistablePreviewHtml());
               importArticleHtml(exported);
               const restored = elements.preview.querySelector('[data-inserted-component="document"]');
-              results.push({ok, src:restored.querySelector('iframe').dataset.securitySrc, title:restored.dataset.documentTitle,
+              results.push({ok, src:restored.querySelector('iframe').src, title:restored.dataset.documentTitle,
                 unsafe:!!restored.querySelector('script,[onload]'), exportFrame:exported.includes('<iframe')});
             }
             const unsafe = documentEmbedFromCode('<iframe src="https://evil.test/player"></iframe>', 'speakerdeck');

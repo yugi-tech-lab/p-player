@@ -1,5 +1,4 @@
 // DOMPurify is vendored and pinned; never fetch the sanitizer at runtime.
-let articleExternalContentAllowed = true;
 
 const ARTICLE_MAX_BYTES = 5 * 1024 * 1024;
 function checkArticleTextSize(value) {
@@ -33,7 +32,7 @@ function setArticleResource(node, value, attr = 'src', preview = true) {
   node.removeAttribute(attr);
   node.removeAttribute(deferred);
   if (!url || (node.tagName === 'IFRAME' && attr === 'src' && !trustedArticleFrame(url))) return;
-  node.setAttribute(preview && !articleExternalContentAllowed && !url.startsWith('data:') ? deferred : attr, url);
+  node.setAttribute(attr, url);
 }
 
 function safeArticleUrl(value, tag = 'A') {
@@ -133,27 +132,4 @@ function sanitizeArticleSettings(value, depth = 0) {
     result[key] = sanitizeArticleSettings(item, depth + 1);
   }
   return result;
-}
-
-function pauseImportedExternalContent() {
-  articleExternalContentAllowed = false;
-  let notice = document.getElementById('articleExternalContentNotice');
-  if (!notice) {
-    notice = document.createElement('div');
-    notice.id = 'articleExternalContentNotice';
-    notice.style.cssText = 'padding:10px;border:1px solid #cbd5e1;background:#f8fafc;font-size:13px;';
-    notice.append('読み込んだ記事の外部画像・動画は停止中です。表示すると提供元へ通信します。 ');
-    const button = document.createElement('button');
-    button.type = 'button'; button.textContent = '外部コンテンツを読み込む';
-    button.addEventListener('click', () => {
-      articleExternalContentAllowed = true;
-      notice.hidden = true;
-      formattedPreviewHtml = sanitizeArticleMarkup(getPersistablePreviewHtml());
-      render({ forceReset: true });
-      restoreImportedEditorStructure(elements.preview);
-    });
-    notice.append(button);
-    elements.preview.before(notice);
-  }
-  notice.hidden = false;
 }
