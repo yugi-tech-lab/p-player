@@ -7675,19 +7675,10 @@ ${bodyHtml}
       // The "見出しを取得" button only makes sense inside this editor — it has
       // nothing to regenerate itself against once exported.
       outputHolder.querySelectorAll("[data-toc-refresh]").forEach((element) => element.remove());
-      outputHolder.querySelectorAll("[data-pl-settings], [data-pl-block-id]").forEach((element) => {
-        element.removeAttribute("data-pl-settings");
+      // Keep semantic structure and per-block settings for HTML round trips.
+      // Only transient editor identifiers are removed.
+      outputHolder.querySelectorAll("[data-pl-block-id]").forEach((element) => {
         element.removeAttribute("data-pl-block-id");
-      });
-      outputHolder.querySelectorAll("[data-heading-content], [data-heading-prefix]").forEach((element) => {
-        element.removeAttribute("data-heading-content");
-        element.removeAttribute("data-heading-prefix");
-      });
-      outputHolder.querySelectorAll("[data-toc-back-link]").forEach((element) => {
-        element.removeAttribute("data-toc-back-link");
-      });
-      outputHolder.querySelectorAll("[data-toc-back-layout]").forEach((element) => {
-        element.removeAttribute("data-toc-back-layout");
       });
       outputHolder.querySelectorAll("[data-embedded-component]").forEach((element) => {
         element.removeAttribute("data-embedded-component");
@@ -8040,13 +8031,45 @@ ${bodyHtml}
         heading.textContent = "新しい見出し";
         block.appendChild(heading);
       }
+      // Older exports omitted the back-link marker. Recover only the editor's
+      // labelled TOC links, including links swallowed by a previous import.
+      heading.querySelectorAll('a[href^="#"]').forEach((link) => {
+        if (link.hasAttribute('data-toc-back-link')) return;
+        if (link.getAttribute('aria-label') !== '目次に戻る' || link.title !== '目次に戻る') return;
+        link.dataset.tocBackLink = 'true';
+      });
+      heading.querySelectorAll('[data-toc-back-link]').forEach((link) => {
+        heading.appendChild(link);
+        heading.dataset.tocBackLayout = 'true';
+      });
+      const legacyPrefix = heading.querySelector(':scope > span[aria-hidden="true"]');
+      if (legacyPrefix && !heading.querySelector(':scope > [data-heading-prefix]')) {
+        legacyPrefix.dataset.headingPrefix = 'true';
+      }
       let content = heading.querySelector(":scope > [data-heading-content]");
+      if (!content) {
+        // Legacy TOC exports removed the marker but kept the flex title span.
+        // Reuse it instead of swallowing the heading's other layout nodes.
+        const candidates = Array.from(heading.children).filter((node) =>
+          node.tagName === 'SPAN'
+          && !node.matches('[data-toc-heading-number], [data-heading-prefix]')
+          && node.style.flexGrow === '1' && node.style.minWidth === '0px');
+        if (candidates.length === 1) {
+          content = candidates[0];
+          content.dataset.headingContent = 'true';
+        }
+      }
+      if (content) {
+        // Browser editing can leave a BR alongside a flex title. It is not a
+        // title line break; real, intentional breaks live inside the content.
+        heading.querySelectorAll(':scope > br').forEach((lineBreak) => lineBreak.remove());
+      }
       if (!content) {
         const existingNodes = Array.from(heading.childNodes);
         content = document.createElement("span");
         content.dataset.headingContent = "true";
         content.contentEditable = "true";
-        existingNodes.filter((node) => !node.matches?.('[data-toc-heading-number]'))
+        existingNodes.filter((node) => !node.matches?.('[data-toc-heading-number], [data-toc-back-link], [data-heading-prefix]'))
           .forEach((node) => content.appendChild(node));
         heading.appendChild(content);
       }
@@ -8106,6 +8129,22 @@ ${bodyHtml}
 
     function ensureDocumentBlocks() {
       if (!elements.preview) return;
+      const restoreBodySettings = (block) => {
+        if (block.dataset.plSettings) return;
+        const settings = readDocumentBlockSettings("body");
+        // Legacy exports have no settings. A plain body must not inherit the
+        // currently selected card mode: that would forbid its nested headings.
+        const style = block.style;
+        const background = style.backgroundColor;
+        settings.includeCard = Boolean(
+          (background && !['transparent', 'rgba(0, 0, 0, 0)'].includes(background))
+          || (style.backgroundImage && style.backgroundImage !== 'none')
+          || ['Top', 'Right', 'Bottom', 'Left'].some(side =>
+            parseFloat(style[`border${side}Width`]) > 0 && !['none', 'hidden'].includes(style[`border${side}Style`]))
+          || (style.boxShadow && style.boxShadow !== 'none')
+        );
+        writeDocumentBlockSettings(block, settings);
+      };
       const directChildren = Array.from(elements.preview.children);
       const headingWrapper = directChildren.find((child) => child.matches('[data-inserted-component="heading"]'))
         || directChildren.find((child) => child.querySelector(":scope > h2, :scope > h3, :scope > h4"));
@@ -8118,7 +8157,7 @@ ${bodyHtml}
         || directChildren.find((child) => child !== headingWrapper && !child.hasAttribute("data-inserted-component"));
       if (bodyWrapper) {
         bodyWrapper.dataset.insertedComponent = "body";
-        if (!bodyWrapper.dataset.plSettings) writeDocumentBlockSettings(bodyWrapper, readDocumentBlockSettings("body"));
+        restoreBodySettings(bodyWrapper);
         bodyWrapper.contentEditable = "true";
       }
       elements.preview.querySelectorAll('[data-inserted-component="heading"]').forEach((block) => {
@@ -8126,7 +8165,7 @@ ${bodyHtml}
         ensureHeadingBlockStructure(block);
       });
       elements.preview.querySelectorAll('[data-inserted-component="body"]').forEach((block) => {
-        if (!block.dataset.plSettings) writeDocumentBlockSettings(block, readDocumentBlockSettings("body"));
+        restoreBodySettings(block);
         block.contentEditable = "true";
       });
     }

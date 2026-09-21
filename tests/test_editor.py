@@ -1137,7 +1137,7 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["enabled"]["labels"], ["↑ 目次", "↑ 目次"])
         self.assertEqual(result["enabled"]["headingDisplay"], "flex")
         self.assertEqual(result["enabled"]["outputLinks"], 2)
-        self.assertEqual(result["enabled"]["outputEditorMarkers"], 0)
+        self.assertEqual(result["enabled"]["outputEditorMarkers"], 2)
         self.assertEqual(result["disabledCount"], 0)
         self.assertEqual(result["disabledDisplay"], "")
         self.assertEqual(result["afterTocRemoval"], 0)
