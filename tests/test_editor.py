@@ -734,6 +734,105 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result['importedCards'], 3)
         self.assertEqual(result['importedArrows'], 2)
 
+    def test_vertical_flow_width_alignment_and_round_trip(self):
+        result = self.page.evaluate("""() => {
+          elements.preview.innerHTML = insertedComponentHtml('beforeAfter');
+          let component = elements.preview.firstElementChild;
+          const sync = () => {
+            activeInsertedComponent = component;
+            document.querySelector('.inserted-component-properties')._sync();
+          };
+          const set = (id, value) => {
+            const input = document.getElementById(id);
+            if (input.type === 'checkbox') input.checked = value;
+            else input.value = value;
+            input.dispatchEvent(new Event('input', {bubbles:true}));
+          };
+          sync();
+          const row = document.querySelector('[data-compare-vertical-settings]');
+          const initial = {hidden:row.hidden, width:document.querySelector('#compareVerticalWidth').value};
+          set('compareCount', '3');
+          set('compareLayout', 'vertical');
+          set('compareArrow', true);
+          set('compareVerticalWidth', '60');
+          const placements = ['left','center','right'].map(align => {
+            set('compareVerticalAlign', align);
+            const rect = component.getBoundingClientRect();
+            const parent = elements.preview.getBoundingClientRect();
+            const card = component.querySelector('[data-compare-stage]').getBoundingClientRect();
+            const arrow = component.querySelector(':scope > [data-compare-arrow]').getBoundingClientRect();
+            return {align, x:rect.x, width:rect.width, cardWidth:card.width,
+              centered:Math.abs(arrow.x + arrow.width / 2 - (rect.x + rect.width / 2)) < 1,
+              visible:!row.hidden};
+          });
+          const saved = getPersistablePreviewHtml();
+          applyArticlePayload({saveType:'full', settings:{}, articleHtml:saved});
+          component = elements.preview.querySelector('[data-inserted-component="beforeAfter"]');
+          sync();
+          const jsonWidth = component.style.width;
+          importArticleHtml(formatOutputHtml(getPersistablePreviewHtml()));
+          component = elements.preview.querySelector('[data-inserted-component="beforeAfter"]');
+          sync();
+          const restored = {width:document.querySelector('#compareVerticalWidth').value,
+            align:document.querySelector('#compareVerticalAlign').value,
+            css:component.style.width, margin:component.style.marginLeft};
+          set('compareLayout', 'horizontal');
+          const horizontal = {width:component.style.width, hidden:row.hidden};
+          set('compareLayout', 'vertical');
+          return {initial, placements, jsonWidth, restored, horizontal,
+            back:component.style.width, backAlign:component.dataset.compareVerticalAlign};
+        }""")
+        self.assertEqual(result['initial'], dict(hidden=True, width='100'))
+        placements = result['placements']
+        self.assertLess(placements[0]['x'], placements[1]['x'])
+        self.assertLess(placements[1]['x'], placements[2]['x'])
+        for placement in placements:
+            self.assertTrue(placement['centered'])
+            self.assertTrue(placement['visible'])
+            self.assertAlmostEqual(placement['width'], placement['cardWidth'], delta=1)
+        self.assertEqual(result['jsonWidth'], '60%')
+        self.assertEqual(result['restored'], dict(width='60', align='right', css='60%', margin='auto'))
+        self.assertEqual(result['horizontal'], dict(width='', hidden=True))
+        self.assertEqual(result['back'], '60%')
+        self.assertEqual(result['backAlign'], 'right')
+
+    def test_compare_arrows_are_isolated_from_parent_underline(self):
+        for direction, symbol in [('horizontal', '→'), ('vertical', '↓')]:
+            result = self.page.evaluate("""({direction, symbol}) => {
+                elements.preview.innerHTML = '<div style="text-decoration:underline">'
+                  + insertedComponentHtml('beforeAfter') + '</div>';
+                const component = elements.preview.querySelector('[data-inserted-component="beforeAfter"]');
+                activeInsertedComponent = component;
+                document.querySelector('.inserted-component-properties')._sync();
+                const layout = document.querySelector('#compareLayout');
+                layout.value = direction;
+                layout.dispatchEvent(new Event('input', {bubbles:true}));
+                const flag = document.querySelector('#compareArrow');
+                flag.checked = true;
+                flag.dispatchEvent(new Event('input', {bubbles:true}));
+                const inspect = root => {
+                  const arrow = root.querySelector('[data-inserted-component="beforeAfter"] > [data-compare-arrow]');
+                  const glyph = arrow.querySelector('[data-compare-arrow-glyph]');
+                  return {text:arrow.textContent.trim(), display:glyph?.style.display,
+                    decoration:glyph?.style.textDecoration,
+                    parent:[...root.querySelectorAll('[style]')].some(el =>
+                      el.contains(arrow) && el.style.textDecorationLine === 'underline')};
+                };
+                // Simulate an older save, without the isolation wrapper.
+                const arrow = component.querySelector('[data-compare-arrow="true"]');
+                arrow.textContent = symbol;
+                capturePreviewEdits();
+                const preview = inspect(elements.preview);
+                const exported = document.createElement('div');
+                const html = formatOutputHtml(getPersistablePreviewHtml());
+                exported.innerHTML = html;
+                const output = inspect(exported);
+                importArticleHtml(html);
+                return {preview, output, imported:inspect(elements.preview)};
+            }""", dict(direction=direction, symbol=symbol))
+            for state in result.values():
+                self.assertEqual(state, dict(text=symbol, display='inline-block', decoration='none', parent=True))
+
     def test_empty_text_component_keeps_layout_and_accepts_text_again(self):
         self.page.evaluate("""() => {
             elements.preview.innerHTML = insertedComponentHtml('note');

@@ -7528,6 +7528,7 @@ ${bodyHtml}
     function formatOutputHtml(html) {
       const outputHolder = document.implementation.createHTMLDocument('').createElement("div");
       outputHolder.innerHTML = sanitizeArticleMarkup(html);
+      normalizeCompareArrows(outputHolder);
       outputHolder.querySelectorAll('[data-inserted-component="shape"]').forEach((component) => {
         applyShapeDesign(component, true);
       });
@@ -11899,6 +11900,10 @@ ${bodyHtml}
             <div class="field"><label for="compareLayout">配置</label><select id="compareLayout"><option value="horizontal">左右</option><option value="vertical">上下</option></select></div>
             <div class="field"><label for="compareTextAlign">文字位置</label><select id="compareTextAlign"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div>
           </div>
+          <div class="row" data-compare-vertical-settings hidden>
+            <div class="field"><label for="compareVerticalWidth">カード横幅</label><div class="unit-input"><input id="compareVerticalWidth" type="number" min="10" max="100" value="100"><span>%</span></div></div>
+            <div class="field"><label for="compareVerticalAlign">フロー全体の位置</label><select id="compareVerticalAlign"><option value="left">左寄せ</option><option value="center">中央寄せ</option><option value="right">右寄せ</option></select></div>
+          </div>
           <div class="row">
             <div class="field"><label for="compareGap">間隔</label><div class="unit-input"><input id="compareGap" type="number" min="0" max="60" value="12"><span>px</span></div></div>
             <div class="field"><label class="check-item"><input id="compareArrow" type="checkbox">中央に矢印</label></div>
@@ -11937,6 +11942,8 @@ ${bodyHtml}
         preset: comparePropertyBlock.querySelector("#comparePreset"),
         count: comparePropertyBlock.querySelector("#compareCount"),
         layout: comparePropertyBlock.querySelector("#compareLayout"),
+        verticalWidth: comparePropertyBlock.querySelector("#compareVerticalWidth"),
+        verticalAlign: comparePropertyBlock.querySelector("#compareVerticalAlign"),
         align: comparePropertyBlock.querySelector("#compareTextAlign"),
         gap: comparePropertyBlock.querySelector("#compareGap"),
         arrow: comparePropertyBlock.querySelector("#compareArrow"),
@@ -12730,6 +12737,9 @@ ${bodyHtml}
           compareControls.preset.value = component.dataset.comparePreset || "custom";
           compareControls.count.value = String(count);
           compareControls.layout.value = component.dataset.compareLayout || "horizontal";
+          compareControls.verticalWidth.value = component.dataset.compareVerticalWidth || "100";
+          compareControls.verticalAlign.value = component.dataset.compareVerticalAlign || "left";
+          comparePropertyBlock.querySelector('[data-compare-vertical-settings]').hidden = compareControls.layout.value !== 'vertical';
           compareControls.align.value = component.dataset.compareAlign || beforeCard?.style.textAlign || "left";
           compareControls.gap.value = component.dataset.compareGap || String(parseInt(component.style.gap, 10) || 12);
           compareControls.arrow.checked = component.dataset.compareArrow === "true";
@@ -13621,6 +13631,10 @@ ${bodyHtml}
           card.contentEditable = "true";
         });
         const layout = compareControls.layout.value;
+        const verticalWidth = Math.max(10, Math.min(100, Number(compareControls.verticalWidth.value) || 100));
+        const verticalAlign = ['left', 'center', 'right'].includes(compareControls.verticalAlign.value)
+          ? compareControls.verticalAlign.value : 'left';
+        comparePropertyBlock.querySelector('[data-compare-vertical-settings]').hidden = layout !== 'vertical';
         const gap = Math.max(0, Math.min(60, Number(compareControls.gap.value) || 0));
         const arrowThickness = Math.max(1, Math.min(4, Number(compareControls.arrowThickness.value) || 1));
         compareControls.arrowThickness.disabled = !compareControls.arrow.checked;
@@ -13665,6 +13679,13 @@ ${bodyHtml}
         component.style.gridTemplateRows = "";
         component.style.gap = `${gap}px`;
         component.style.margin = "14px 0";
+        component.style.width = layout === 'vertical' ? `${verticalWidth}%` : '';
+        component.style.maxWidth = '100%';
+        component.style.boxSizing = 'border-box';
+        if (layout === 'vertical') {
+          component.style.marginLeft = verticalAlign === 'left' ? '0' : 'auto';
+          component.style.marginRight = verticalAlign === 'right' ? '0' : 'auto';
+        }
         cards.forEach((card, index) => {
           const isFirst = index === 0;
           const isLast = index === cards.length - 1;
@@ -13686,6 +13707,8 @@ ${bodyHtml}
         component.dataset.comparePreset = compareControls.preset.value;
         component.dataset.compareCount = String(count);
         component.dataset.compareLayout = layout;
+        component.dataset.compareVerticalWidth = String(verticalWidth);
+        component.dataset.compareVerticalAlign = verticalAlign;
         component.dataset.compareAlign = compareControls.align.value;
         component.dataset.compareGap = String(gap);
         component.dataset.compareArrow = String(compareControls.arrow.checked);
@@ -15698,7 +15721,25 @@ ${bodyHtml}
       });
     }
 
+    function normalizeCompareArrows(root) {
+      root?.querySelectorAll?.('[data-inserted-component="beforeAfter"] > [data-compare-arrow]').forEach((arrow) => {
+        // Decorations on an ancestor propagate through ordinary spans even
+        // with text-decoration:none. An atomic inline box isolates the glyph.
+        let glyph = arrow.querySelector(':scope > [data-compare-arrow-glyph]');
+        if (!glyph) {
+          glyph = arrow.ownerDocument.createElement('span');
+          glyph.dataset.compareArrowGlyph = 'true';
+          glyph.textContent = arrow.textContent;
+          arrow.replaceChildren(glyph);
+        }
+        arrow.style.textDecoration = 'none';
+        glyph.style.display = 'inline-block';
+        glyph.style.textDecoration = 'none';
+      });
+    }
+
     function normalizeEmbeddedSideContent(root) {
+      normalizeCompareArrows(root);
       const imageTextComponents = root?.matches?.('[data-inserted-component="imageText"]')
         ? [root]
         : Array.from(root?.querySelectorAll?.('[data-inserted-component="imageText"]') || []);
