@@ -527,7 +527,7 @@ class EditorTests(unittest.TestCase):
               caption2: restoredPost.dataset.xpostCaption2,
               videoUrl: restoredVideo?.dataset.embedUrl,
               videoCaption: restoredVideo?.dataset.videoBottomText,
-              iframe: restoredVideo?.querySelector('iframe')?.getAttribute('src'),
+              iframe: restoredVideo?.querySelector('iframe')?.getAttribute('data-security-src'),
               exportedAgain: formatOutputHtml(getPersistablePreviewHtml())
             };
         }""")
@@ -562,7 +562,7 @@ class EditorTests(unittest.TestCase):
               enabled: restored.dataset.xpostSideText,
               width: restored.dataset.xpostMaxWidth,
               text: restored.querySelector('[data-embed-text]').textContent,
-              iframes: [...elements.preview.querySelectorAll('iframe')].map(frame => frame.src),
+              iframes: [...elements.preview.querySelectorAll('iframe')].map(frame => frame.dataset.securitySrc),
               handlers: elements.preview.querySelectorAll('[onload]').length
             };
         }""")
