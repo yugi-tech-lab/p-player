@@ -47,6 +47,50 @@ class ExternalServiceTests(unittest.TestCase):
         self.assertIsNone(result['document'])
         self.assertTrue(all(item is None for item in result['rejected']))
 
+    def test_saved_x_widgets_are_rebuilt_from_urls_on_json_and_restore(self):
+        result = self.page.evaluate('''async () => {
+          window.widgetLoads = [];
+          window.twttr = {widgets: {load(component) {
+            const links = [...component.querySelectorAll('blockquote a')].map(a => a.href);
+            widgetLoads.push(links);
+            component.querySelectorAll('blockquote').forEach(quote => {
+              const frame = document.createElement('iframe');
+              frame.src = 'https://platform.twitter.com/embed/Tweet.html';
+              frame.dataset.testWidget = 'true';
+              quote.replaceWith(frame);
+            });
+          }}};
+          const holder = document.createElement('template');
+          holder.innerHTML = insertedComponentHtml('xpost');
+          const post = holder.content.firstElementChild;
+          Object.assign(post.dataset, {embedUrl:'https://x.com/demo/status/111',
+            embedUrl2:'https://twitter.com/demo/status/222', xpostCount:'2',
+            xpostMode:'video', xpostCaption:'saved caption', xpostMaxWidth:'45'});
+          post.querySelector('[data-embed-slot]').innerHTML = '<iframe src="https://platform.twitter.com/embed/Tweet.html" onload="window.badSavedWidget=true"></iframe>';
+          const saved = holder.innerHTML;
+          applyArticlePayload({saveType:'full', settings:{}, articleHtml:saved});
+          await Promise.resolve(); await Promise.resolve();
+          const inspect = () => ({frames:elements.preview.querySelectorAll('[data-test-widget]').length,
+            caption:elements.preview.textContent.includes('saved caption'),
+            mode:elements.preview.querySelector('[data-inserted-component="xpost"]').dataset.xpostMode});
+          const json = inspect();
+          render({forceReset:true});
+          await Promise.resolve(); await Promise.resolve();
+          const rerender = inspect();
+          restoreAutosavePayload({settings:{},previewHtml:saved}, 'restore');
+          await Promise.resolve(); await Promise.resolve();
+          return {json, rerender, restored:inspect(), loads:widgetLoads,
+            unsafe:!!window.badSavedWidget || !!elements.preview.querySelector('[onload]')};
+        }''')
+        for mode in ['json', 'rerender', 'restored']:
+            self.assertEqual(result[mode]['frames'], 2, mode)
+            self.assertTrue(result[mode]['caption'], mode)
+            self.assertEqual(result[mode]['mode'], 'video')
+        self.assertFalse(result['unsafe'])
+        self.assertEqual(len(result['loads']), 3)
+        for urls in result['loads']:
+            self.assertEqual(urls, ['https://x.com/demo/status/111', 'https://twitter.com/demo/status/222'])
+
     def test_drive_slide_settings_json_and_html_round_trip(self):
         result = self.page.evaluate("""async () => {
           elements.preview.innerHTML = insertedComponentHtml('document');

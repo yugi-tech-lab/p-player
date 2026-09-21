@@ -7339,6 +7339,13 @@ ${bodyHtml}
       normalizeLinkCardSize(elements.preview);
       normalizeTocDesign(elements.preview);
       syncRuledCardMetricsForPreview();
+      // Saved X widgets contain provider-generated frames, which are intentionally
+      // removed by the sanitizer. Rebuild from the saved URLs after every render
+      // (JSON, autosave and undo included), without recording intermediate history.
+      elements.preview.querySelectorAll('[data-inserted-component="xpost"]').forEach((component) => {
+        renderEmbedComponent(component, { capture: false });
+        applyXPostLayout(component);
+      });
       if (activeComponentIndex >= 0) {
         activeInsertedComponent = elements.preview.querySelectorAll("[data-inserted-component]")[activeComponentIndex] || null;
         if (activeInsertedComponent?.dataset.embeddedComponent) {
@@ -15302,7 +15309,7 @@ ${bodyHtml}
       return embedPlaceholderHtml("▶️", "対応していない動画URLです（YouTube・Vimeo・mp4/webm/ogg直リンクに対応）");
     }
 
-    function renderEmbedComponent(component) {
+    function renderEmbedComponent(component, { capture = true } = {}) {
       const type = component?.dataset.insertedComponent;
       if (!["xpost", "video"].includes(type)) return;
       const renderVersion = (embedRenderVersions.get(component) || 0) + 1;
@@ -15356,7 +15363,7 @@ ${bodyHtml}
         component.querySelectorAll("[data-embed-placeholder]").forEach((element) => element.remove());
       }
       if (type === "xpost") normalizeXPostSpacing(component);
-      capturePreviewEdits();
+      if (capture) capturePreviewEdits();
       if (type === "xpost" && component.querySelector('a[href*="/status/"]')) {
         loadTwitterWidgetScript().then((twttr) => {
           if (!component.isConnected || embedRenderVersions.get(component) !== renderVersion) return;
