@@ -734,6 +734,55 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result['importedCards'], 3)
         self.assertEqual(result['importedArrows'], 2)
 
+    def test_compare_triangle_arrows_save_import_and_switch_direction(self):
+        result = self.page.evaluate("""() => {
+          elements.preview.innerHTML = insertedComponentHtml('beforeAfter');
+          const sync = () => {
+            activeInsertedComponent = elements.preview.querySelector('[data-inserted-component="beforeAfter"]');
+            document.querySelector('.inserted-component-properties')._sync();
+          };
+          const set = (id, value) => {
+            const input = document.getElementById(id);
+            if (input.type === 'checkbox') input.checked = value;
+            else input.value = value;
+            input.dispatchEvent(new Event('input', {bubbles:true}));
+          };
+          const arrows = () => [...elements.preview.querySelectorAll(
+            '[data-inserted-component="beforeAfter"] > [data-compare-arrow]')].map(el => el.textContent.trim());
+          sync();
+          const initial = document.querySelector('#compareArrowStyle').value;
+          set('compareCount', '3');
+          set('compareArrow', true);
+          const normal = arrows();
+          set('compareArrowStyle', 'triangle');
+          const horizontal = arrows();
+          set('compareLayout', 'vertical');
+          const vertical = arrows();
+          applyArticlePayload({saveType:'full', settings:{}, articleHtml:getPersistablePreviewHtml()});
+          sync();
+          const json = {style:document.querySelector('#compareArrowStyle').value, arrows:arrows()};
+          importArticleHtml(formatOutputHtml(getPersistablePreviewHtml()));
+          sync();
+          const html = {style:document.querySelector('#compareArrowStyle').value, arrows:arrows()};
+          set('compareArrow', false);
+          const disabled = {count:arrows().length, control:document.querySelector('#compareArrowStyle').disabled};
+          set('compareArrow', true);
+          set('compareLayout', 'horizontal');
+          const restored = arrows();
+          set('compareArrowStyle', 'arrow');
+          set('compareLayout', 'vertical');
+          return {initial, normal, horizontal, vertical, json, html, disabled, restored, final:arrows()};
+        }""")
+        self.assertEqual(result['initial'], 'arrow')
+        self.assertEqual(result['normal'], ['→', '→'])
+        self.assertEqual(result['horizontal'], ['▶', '▶'])
+        self.assertEqual(result['vertical'], ['▼', '▼'])
+        for key in ('json', 'html'):
+            self.assertEqual(result[key], dict(style='triangle', arrows=['▼', '▼']))
+        self.assertEqual(result['disabled'], dict(count=0, control=True))
+        self.assertEqual(result['restored'], ['▶', '▶'])
+        self.assertEqual(result['final'], ['↓', '↓'])
+
     def test_vertical_flow_width_alignment_and_round_trip(self):
         result = self.page.evaluate("""() => {
           elements.preview.innerHTML = insertedComponentHtml('beforeAfter');

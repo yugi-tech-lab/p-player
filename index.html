@@ -3448,6 +3448,13 @@
       width: 34px;
     }
 
+    .list-component-settings .compare-swap-btn {
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      width: auto;
+      justify-self: start;
+    }
+
     .list-component-settings .list-color-settings-row input[type="text"] {
       min-width: 0;
       padding-inline: 5px;
@@ -11906,9 +11913,16 @@ ${bodyHtml}
           </div>
           <div class="row">
             <div class="field"><label for="compareGap">間隔</label><div class="unit-input"><input id="compareGap" type="number" min="0" max="60" value="12"><span>px</span></div></div>
+          </div>
+        </div>
+        <div class="list-settings-group">
+          <strong>矢印</strong>
+          <div class="row">
             <div class="field"><label class="check-item"><input id="compareArrow" type="checkbox">中央に矢印</label></div>
+            <div class="field"><label for="compareArrowStyle">矢印の種類</label><select id="compareArrowStyle"><option value="arrow">通常（→・↓）</option><option value="triangle">三角（▶・▼）</option></select></div>
             <div class="field"><label for="compareArrowThickness">矢印の太さ</label><select id="compareArrowThickness"><option value="1">標準</option><option value="2">太い</option><option value="3">より太い</option><option value="4">極太</option></select></div>
-            <div class="field"><button class="secondary" id="compareSwap" type="button">順序を反転</button></div>
+            <div class="field"><label for="compareArrowColor">矢印の色</label><div class="color-row"><input id="compareArrowColor" type="color" value="#0f8b8d"><input id="compareArrowColorText" type="text" value="#0f8b8d"></div></div>
+            <div class="field"><label>&nbsp;</label><button class="secondary compare-swap-btn" id="compareSwap" type="button">順序を反転</button></div>
           </div>
         </div>
         <div class="list-settings-group">
@@ -11948,6 +11962,9 @@ ${bodyHtml}
         gap: comparePropertyBlock.querySelector("#compareGap"),
         arrow: comparePropertyBlock.querySelector("#compareArrow"),
         arrowThickness: comparePropertyBlock.querySelector("#compareArrowThickness"),
+        arrowStyle: comparePropertyBlock.querySelector("#compareArrowStyle"),
+        arrowColor: comparePropertyBlock.querySelector("#compareArrowColor"),
+        arrowColorText: comparePropertyBlock.querySelector("#compareArrowColorText"),
         swap: comparePropertyBlock.querySelector("#compareSwap"),
         beforeBackground: comparePropertyBlock.querySelector("#compareBeforeBackground"),
         beforeBackgroundText: comparePropertyBlock.querySelector("#compareBeforeBackgroundText"),
@@ -12743,9 +12760,12 @@ ${bodyHtml}
           compareControls.align.value = component.dataset.compareAlign || beforeCard?.style.textAlign || "left";
           compareControls.gap.value = component.dataset.compareGap || String(parseInt(component.style.gap, 10) || 12);
           compareControls.arrow.checked = component.dataset.compareArrow === "true";
+          compareControls.arrowStyle.value = component.dataset.compareArrowStyle === 'triangle' ? 'triangle' : 'arrow';
+          compareControls.arrowStyle.disabled = !compareControls.arrow.checked;
           compareControls.arrowThickness.value = ["1", "2", "3", "4"].includes(component.dataset.compareArrowThickness)
             ? component.dataset.compareArrowThickness : "1";
           compareControls.arrowThickness.disabled = !compareControls.arrow.checked;
+          setColorControl(compareControls.arrowColor, compareControls.arrowColorText, component.dataset.compareArrowColor || component.querySelector('[data-compare-arrow]')?.style.color || component.dataset.compareAfterTitleColor || "#0f8b8d");
           setColorControl(compareControls.beforeBackground, compareControls.beforeBackgroundText, component.dataset.compareBeforeBackground || beforeCard?.style.backgroundColor || "#f4f6f8");
           setColorControl(compareControls.middleBackground, compareControls.middleBackgroundText, component.dataset.compareMiddleBackground || middleCard?.style.backgroundColor || "#f8fafc");
           setColorControl(compareControls.afterBackground, compareControls.afterBackgroundText, component.dataset.compareAfterBackground || afterCard?.style.backgroundColor || "#eef8f8");
@@ -13637,6 +13657,8 @@ ${bodyHtml}
         comparePropertyBlock.querySelector('[data-compare-vertical-settings]').hidden = layout !== 'vertical';
         const gap = Math.max(0, Math.min(60, Number(compareControls.gap.value) || 0));
         const arrowThickness = Math.max(1, Math.min(4, Number(compareControls.arrowThickness.value) || 1));
+        const arrowStyle = compareControls.arrowStyle.value === 'triangle' ? 'triangle' : 'arrow';
+        compareControls.arrowStyle.disabled = !compareControls.arrow.checked;
         compareControls.arrowThickness.disabled = !compareControls.arrow.checked;
         const borderWidth = Math.max(0, Math.min(8, Number(compareControls.borderWidth.value) || 0));
         const radius = Math.max(0, Math.min(40, Number(compareControls.radius.value) || 0));
@@ -13648,20 +13670,24 @@ ${bodyHtml}
         const beforeTitleColor = colorValue(compareControls.beforeTitleColorText.value, compareControls.beforeTitleColor.value);
         const middleTitleColor = colorValue(compareControls.middleTitleColorText.value, compareControls.middleTitleColor.value);
         const afterTitleColor = colorValue(compareControls.afterTitleColorText.value, compareControls.afterTitleColor.value);
+        const arrowColor = colorValue(compareControls.arrowColorText.value, compareControls.arrowColor.value);
         const shadow = compareControls.shadow.value === "strong"
           ? "0 8px 20px rgba(15,23,42,.18)"
           : compareControls.shadow.value === "soft" ? "0 3px 10px rgba(15,23,42,.10)" : "none";
         const arrows = [];
+        const arrowReversed = component.dataset.compareArrowReversed === "true";
         if (compareControls.arrow.checked) {
           cards.slice(1).forEach((card) => {
             const arrow = document.createElement("span");
             arrow.dataset.compareArrow = "true";
             arrow.contentEditable = "false";
             arrow.setAttribute("aria-hidden", "true");
-            arrow.textContent = layout === "vertical" ? "↓" : "→";
+            arrow.textContent = arrowStyle === 'triangle'
+              ? (layout === 'vertical' ? (arrowReversed ? '▲' : '▼') : (arrowReversed ? '◀' : '▶'))
+              : (layout === 'vertical' ? (arrowReversed ? '↑' : '↓') : (arrowReversed ? '←' : '→'));
             arrow.style.alignSelf = "center";
             arrow.style.justifySelf = "center";
-            arrow.style.color = afterTitleColor;
+            arrow.style.color = arrowColor;
             arrow.style.fontSize = "1.5em";
             arrow.style.fontWeight = arrowThickness >= 3 ? "900" : "700";
             arrow.style.webkitTextStroke = arrowThickness > 1 ? `${(arrowThickness - 1) * 0.55}px currentColor` : "0";
@@ -13713,6 +13739,8 @@ ${bodyHtml}
         component.dataset.compareGap = String(gap);
         component.dataset.compareArrow = String(compareControls.arrow.checked);
         component.dataset.compareArrowThickness = String(arrowThickness);
+        component.dataset.compareArrowStyle = arrowStyle;
+        component.dataset.compareArrowColor = arrowColor;
         component.dataset.compareBeforeBackground = beforeBackground;
         component.dataset.compareMiddleBackground = middleBackground;
         component.dataset.compareAfterBackground = afterBackground;
@@ -14857,6 +14885,7 @@ ${bodyHtml}
         setCompareColor(compareControls.middleTitleColor, compareControls.middleTitleColorText, preset.middleTitle);
         setCompareColor(compareControls.afterTitleColor, compareControls.afterTitleColorText, preset.afterTitle);
         setCompareColor(compareControls.borderColor, compareControls.borderColorText, preset.border);
+        setCompareColor(compareControls.arrowColor, compareControls.arrowColorText, preset.afterTitle);
         compareControls.arrow.checked = preset.arrow;
         compareControls.arrowThickness.value = preset.arrowThickness;
         compareControls.borderStyle.value = preset.borderStyle;
@@ -14879,6 +14908,7 @@ ${bodyHtml}
           if (input === compareControls.beforeTitleColor) compareControls.beforeTitleColorText.value = input.value;
           if (input === compareControls.middleTitleColor) compareControls.middleTitleColorText.value = input.value;
           if (input === compareControls.afterTitleColor) compareControls.afterTitleColorText.value = input.value;
+          if (input === compareControls.arrowColor) compareControls.arrowColorText.value = input.value;
           compareControls.preset.value = "custom";
           applyComponentSpecificSettings();
         };
@@ -14892,6 +14922,7 @@ ${bodyHtml}
         const cards = Array.from(component.children).filter((child) => !child.hasAttribute("data-compare-arrow")).slice(0, 3);
         if (cards.length < 2) return;
         cards.reverse().forEach((card) => component.appendChild(card));
+        component.dataset.compareArrowReversed = component.dataset.compareArrowReversed === "true" ? "false" : "true";
         applyCompareSettings(component);
         capturePreviewEdits();
         setStatus("Before / Afterの順序を反転しました");
