@@ -34,6 +34,116 @@ class EditorTests(unittest.TestCase):
     def test_startup(self):
         self.assertGreater(self.page.evaluate("elements.preview.children.length"), 0)
 
+    def test_simple_japanese_article_themes_apply_and_persist(self):
+        result = self.page.evaluate("""() => {
+            const expected = {
+              waSumi:{label:'和・墨と朱',pattern:'minimal',card:'plain',main:'#34312f',sub:'#a63d32',body:'#34312f'},
+              waKinari:{label:'和・生成り',pattern:'paper',card:'paper',main:'#9a7644',sub:'#5c5142',body:'#3f3a2f'},
+              waIndigo:{label:'和・藍',pattern:'leftLine',card:'simple',main:'#31556d',sub:'#f3f0e6',body:'#343a40'}
+            };
+            const select = document.querySelector('#preset');
+            const applied = Object.entries(expected).map(([name, spec]) => {
+              select.value = name;
+              select.dispatchEvent(new Event('change', {bubbles:true}));
+              const heading = elements.preview.querySelector('[data-inserted-component="heading"]');
+              const body = elements.preview.querySelector('[data-inserted-component="body"]');
+              const headingSettings = parseDocumentBlockSettings(heading);
+              const bodySettings = parseDocumentBlockSettings(body);
+              return {name, label:select.selectedOptions[0].textContent,
+                pattern:headingSettings.pattern, card:bodySettings.cardPattern,
+                main:headingSettings.mainColorText, sub:headingSettings.subColorText,
+                body:bodySettings.bodyColorText, headingText:heading.textContent,
+                bodyText:body.textContent};
+            });
+            document.querySelector('#presetGalleryTrigger').click();
+            const galleryLabels = [...document.querySelectorAll('#presetGalleryGrid .preset-gallery-card-label')]
+              .map(label => label.textContent).filter(label => label.startsWith('和・'));
+            document.querySelector('#presetGalleryDialog').close();
+            select.value = 'waKinari';
+            select.dispatchEvent(new Event('change', {bubbles:true}));
+            const settings = collectSettings();
+            const html = getPersistablePreviewHtml();
+            applySettings(settings, {renderPreview:false});
+            formattedPreviewHtml = html;
+            render({forceReset:true});
+            return {expected, applied, galleryLabels, restored:elements.preset.value,
+              restoredPattern:parseDocumentBlockSettings(elements.preview.querySelector('[data-inserted-component="heading"]')).pattern};
+        }""")
+        for state in result['applied']:
+            spec = result['expected'][state['name']]
+            for key in ('label', 'pattern', 'card', 'main', 'sub', 'body'):
+                self.assertEqual(state[key], spec[key], f"{state['name']} {key}")
+            self.assertTrue(state['headingText'].strip())
+            self.assertTrue(state['bodyText'].strip())
+        self.assertEqual(result['galleryLabels'], ['和・墨と朱', '和・生成り', '和・藍'])
+        self.assertEqual(result['restored'], 'waKinari')
+        self.assertEqual(result['restoredPattern'], 'paper')
+
+    def test_add_document_blocks_after_selected_plain_or_card_body(self):
+        result = self.page.evaluate("""() => {
+            const actions = [
+              ['addHeadingBlockButton', 'heading'],
+              ['addBodyBlockButton', 'plain'],
+              ['addBodyCardBlockButton', 'card']
+            ];
+            const states = [];
+            for (const selectedCard of [false, true]) {
+              for (const [buttonId, addedMode] of actions) {
+                const selected = document.createElement('div');
+                selected.dataset.insertedComponent = 'body';
+                selected.textContent = selectedCard ? '選択中の本文カード' : '選択中の通常本文';
+                applyDocumentBlockAppearance(selected, {...readDocumentBlockSettings('body'), includeCard:selectedCard});
+                const following = document.createElement('div');
+                following.dataset.insertedComponent = 'body';
+                following.textContent = '後ろの本文';
+                applyDocumentBlockAppearance(following, {...readDocumentBlockSettings('body'), includeCard:false});
+                elements.preview.replaceChildren(selected, following);
+                activeInsertedComponent = selected;
+                setDocumentBlockControls(selected);
+                const range = document.createRange();
+                range.selectNodeContents(selected);
+                range.collapse(false);
+                savedPreviewRange = range.cloneRange();
+                const selection = getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+                updateInsertionAvailability();
+                const availability = Object.fromEntries(
+                  actions.map(([id, mode]) => [mode, document.getElementById(id).getAttribute('aria-disabled')])
+                );
+                document.getElementById(buttonId).click();
+                const children = [...elements.preview.children];
+                const inserted = children[1];
+                states.push({selectedCard, addedMode, availability,
+                  order:children.map(child => child.dataset.insertedComponent),
+                  selectedText:children[0].textContent.trim(),
+                  followingText:children[2].textContent.trim(),
+                  outside:inserted.parentElement === elements.preview && !selected.contains(inserted),
+                  insertedCard:inserted.dataset.insertedComponent === 'body' ? isBodyCard(inserted) : null,
+                  invalid:findInvalidNestedStructure()?.message || null,
+                  active:activeInsertedComponent === inserted,
+                  editable:inserted.dataset.insertedComponent === 'heading'
+                    ? inserted.querySelector('[data-heading-content]')?.contentEditable
+                    : inserted.contentEditable});
+              }
+            }
+            return states;
+        }""")
+        self.assertEqual(len(result), 6)
+        for state in result:
+            self.assertEqual(state['availability'], dict(heading='false', plain='false', card='false'))
+            expected_type = 'heading' if state['addedMode'] == 'heading' else 'body'
+            self.assertEqual(state['order'], ['body', expected_type, 'body'])
+            self.assertEqual(state['selectedText'],
+                             '選択中の本文カード' if state['selectedCard'] else '選択中の通常本文')
+            self.assertEqual(state['followingText'], '後ろの本文')
+            self.assertTrue(state['outside'])
+            expected_card = None if state['addedMode'] == 'heading' else state['addedMode'] == 'card'
+            self.assertEqual(state['insertedCard'], expected_card)
+            self.assertIsNone(state['invalid'])
+            self.assertTrue(state['active'])
+            self.assertEqual(state['editable'], 'true')
+
     def test_header_shows_automatic_last_updated_date(self):
         result = self.page.evaluate("""() => {
             const label = document.querySelector('#lastUpdated');
@@ -142,7 +252,9 @@ class EditorTests(unittest.TestCase):
 
     def test_shape_export_survives_removal_of_css_and_editor_attributes(self):
         result = self.page.evaluate("""() => {
-            const kinds = ['arrowDown','arrowUp','arrowRight','arrowLeft','triangleDown','triangleUp','triangleRight','triangleLeft'];
+            const kinds = ['arrowDown','arrowUp','arrowRight','arrowLeft','triangleDown','triangleUp','triangleRight','triangleLeft',
+              'chevronRight','chevronDown','doubleChevronRight','doubleChevronDown',
+              'arrowBothHorizontal','arrowBothVertical','arrowTurnRight','arrowTurnLeft'];
             return kinds.map(kind => {
               const holder = document.createElement('div');
               holder.innerHTML = shapeComponentHtml();
@@ -155,8 +267,49 @@ class EditorTests(unittest.TestCase):
               return {text:holder.textContent.trim(),noAdvancedCss};
             });
         }""")
-        self.assertEqual([entry['text'] for entry in result], ['↓','↑','→','←','▼','▲','▶','◀'])
+        self.assertEqual([entry['text'] for entry in result],
+                         ['↓','↑','→','←','▼','▲','▶','◀','❯','⌄','»','⌄⌄','⇄','⇅','↳','↲'])
         self.assertTrue(all(entry['noAdvancedCss'] for entry in result))
+
+    def test_flow_shapes_preview_and_html_round_trip(self):
+        result = self.page.evaluate("""() => {
+            const expected = {
+              chevronRight:'❯', chevronDown:'⌄', doubleChevronRight:'»', doubleChevronDown:'⌄⌄',
+              arrowBothHorizontal:'⇄', arrowBothVertical:'⇅', arrowTurnRight:'↳', arrowTurnLeft:'↲'
+            };
+            const options = [...document.querySelectorAll('#shapeKind option')]
+              .filter(option => Object.hasOwn(expected, option.value)).map(option => option.value);
+            const states = Object.entries(expected).map(([kind, symbol]) => {
+              elements.preview.innerHTML = shapeComponentHtml();
+              let shape = elements.preview.firstElementChild;
+              shape.dataset.shapeKind = kind;
+              shape.dataset.shapeColor = '#ff0000';
+              shape.dataset.shapeWidth = '90';
+              shape.dataset.shapeHeight = '50';
+              applyShapeDesign(shape);
+              const preview = shape.querySelector('[data-shape-visual]');
+              const previewState = {text:preview.textContent, color:preview.style.color,
+                width:preview.getBoundingClientRect().width, height:preview.getBoundingClientRect().height};
+              const html = formatOutputHtml(elements.preview.innerHTML);
+              importArticleHtml(html);
+              shape = elements.preview.querySelector('[data-inserted-component="shape"]');
+              const restored = shape.querySelector('[data-shape-visual]');
+              return {kind, symbol, preview:previewState, restored:restored.textContent,
+                savedKind:shape.dataset.shapeKind, advanced:/clip-path|aspect-ratio/.test(html)};
+            });
+            return {options, states};
+        }""")
+        self.assertEqual(result['options'], [
+            'chevronRight', 'chevronDown', 'doubleChevronRight', 'doubleChevronDown',
+            'arrowBothHorizontal', 'arrowBothVertical', 'arrowTurnRight', 'arrowTurnLeft'])
+        for state in result['states']:
+            self.assertEqual(state['preview']['text'], state['symbol'])
+            self.assertEqual(state['preview']['color'], 'rgb(255, 0, 0)')
+            self.assertAlmostEqual(state['preview']['width'], 90, delta=1)
+            self.assertGreaterEqual(state['preview']['height'], 50)
+            self.assertEqual(state['restored'], state['symbol'])
+            self.assertEqual(state['savedKind'], state['kind'])
+            self.assertFalse(state['advanced'])
 
     def test_copy_html_keeps_shape_preview_and_history_unchanged(self):
         result = self.page.evaluate("""async () => {

@@ -4816,6 +4816,9 @@
             <option value="studyLedger">スタディノート</option>
             <option value="atelierFrame">アトリエフレーム</option>
             <option value="nightTech">ナイトテック</option>
+            <option value="waSumi">和・墨と朱</option>
+            <option value="waKinari">和・生成り</option>
+            <option value="waIndigo">和・藍</option>
             <option value="custom">カスタム</option>
           </select>
           <div class="preset-gallery-row">
@@ -5761,7 +5764,7 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
               <button class="secondary" id="clearPreviewButton" type="button" title="プレビュー内のすべてのパーツをクリア">クリア</button>
               <button class="secondary" id="undoButton" type="button" title="元に戻す">戻す</button>
               <button class="secondary" id="redoButton" type="button" title="やり直す">やり直す</button>
-              <button class="secondary" id="autosaveHistoryButton" type="button">自動保存から復元</button>
+              <button class="secondary" id="autosaveHistoryButton" type="button" title="このブラウザ内（localStorage）に保存された自動保存データから復元します">自動保存から復元</button>
             </div>
           </div>
           <dialog class="shortcut-help-dialog" id="keyboardShortcutsDialog">
@@ -6549,6 +6552,45 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
         headingShadow: "medium",
         cardRadius: "10",
         cardShadow: "medium"
+      },
+      waSumi: {
+        pattern: "minimal",
+        cardPattern: "plain",
+        mainColor: "#34312f",
+        subColor: "#a63d32",
+        headingColor: "#34312f",
+        bodyColor: "#34312f",
+        componentColor: "#a63d32",
+        radius: "0",
+        headingShadow: "none",
+        cardRadius: "0",
+        cardShadow: "none"
+      },
+      waKinari: {
+        pattern: "paper",
+        cardPattern: "paper",
+        mainColor: "#9a7644",
+        subColor: "#5c5142",
+        headingColor: "#3f3a2f",
+        bodyColor: "#3f3a2f",
+        componentColor: "#8f3f36",
+        radius: "2",
+        headingShadow: "none",
+        cardRadius: "4",
+        cardShadow: "none"
+      },
+      waIndigo: {
+        pattern: "leftLine",
+        cardPattern: "simple",
+        mainColor: "#31556d",
+        subColor: "#f3f0e6",
+        headingColor: "#26343d",
+        bodyColor: "#343a40",
+        componentColor: "#31556d",
+        radius: "0",
+        headingShadow: "none",
+        cardRadius: "2",
+        cardShadow: "none"
       }
     };
 
@@ -8307,6 +8349,7 @@ ${bodyHtml}
 
     function insertDocumentBlock(type, bodyMode = "plain") {
       const insertionContext = getInsertionContext();
+      const selectedBodyBlock = selectedBodyBlockForFollowingDocumentBlock(type);
       const restriction = insertionRestriction(type, insertionContext);
       if (restriction) {
         setInvalidOperation(restriction, insertionContext.sideContent || insertionContext.containingBody);
@@ -8336,7 +8379,9 @@ ${bodyHtml}
       const anchorNode = range?.startContainer;
       const anchorElement = anchorNode?.nodeType === Node.ELEMENT_NODE ? anchorNode : anchorNode?.parentElement;
       const enclosingComponent = anchorElement?.closest?.("[data-inserted-component]");
-      if (enclosingComponent && elements.preview.contains(enclosingComponent)) {
+      if (selectedBodyBlock) {
+        selectedBodyBlock.after(block);
+      } else if (enclosingComponent && elements.preview.contains(enclosingComponent)) {
         enclosingComponent.after(block);
       } else if (range) {
         range.deleteContents();
@@ -8388,7 +8433,26 @@ ${bodyHtml}
       return settings.includeCard !== false && settings.includeCard !== "false";
     }
 
+    function selectedBodyBlockForFollowingDocumentBlock(type) {
+      if (!["heading", "body"].includes(type)) return null;
+      const selected = getSelectedComponent();
+      if (selected?.dataset?.insertedComponent !== "body") return null;
+      // If an older imported document contains nested body blocks, place the
+      // heading outside the outermost body so the new structure stays valid.
+      let boundary = selected;
+      let ancestor = boundary.parentElement?.closest?.('[data-inserted-component="body"]') || null;
+      while (ancestor) {
+        boundary = ancestor;
+        ancestor = boundary.parentElement?.closest?.('[data-inserted-component="body"]') || null;
+      }
+      return boundary;
+    }
+
     function insertionRestriction(type, context = getInsertionContext()) {
+      // When a body block is selected, the document-block buttons mean
+      // "continue after this block". Its saved caret may still be inside the
+      // body, but the new heading/body is inserted beside it, never within it.
+      if (selectedBodyBlockForFollowingDocumentBlock(type)) return "";
       const insideBodyCard = isBodyCard(context.containingBody);
       if (["heading", "body"].includes(type) && (context.sideContent || insideBodyCard)) {
         return type === "body"
@@ -12342,6 +12406,12 @@ ${bodyHtml}
         <div class="field"><label for="shapeKind">種類</label><select id="shapeKind">
           <option value="arrowDown">↓ 下矢印</option><option value="arrowUp">↑ 上矢印</option><option value="arrowRight">→ 右矢印</option><option value="arrowLeft">← 左矢印</option>
           <option value="triangleDown">▼ 下三角</option><option value="triangleUp">▲ 上三角</option><option value="triangleRight">▶ 右三角</option><option value="triangleLeft">◀ 左三角</option>
+          <optgroup label="フロー向け">
+            <option value="chevronRight">❯ 山形（右）</option><option value="chevronDown">⌄ 山形（下）</option>
+            <option value="doubleChevronRight">» 二重山形（右）</option><option value="doubleChevronDown">⌄⌄ 二重山形（下）</option>
+            <option value="arrowBothHorizontal">⇄ 双方向（左右）</option><option value="arrowBothVertical">⇅ 双方向（上下）</option>
+            <option value="arrowTurnRight">↳ 曲がり矢印（右）</option><option value="arrowTurnLeft">↲ 曲がり矢印（左）</option>
+          </optgroup>
         </select></div>
         <div class="field"><label for="shapeColor">色</label><div class="color-row"><input id="shapeColor" type="color" value="#0f8b8d"><input id="shapeColorText" type="text" value="#0f8b8d" aria-label="図形の色コード"></div></div>
         <div class="field"><label for="shapeAlign">配置</label><select id="shapeAlign"><option value="left">左</option><option value="center" selected>中央</option><option value="right">右</option></select></div>
@@ -15183,14 +15253,22 @@ ${bodyHtml}
 
     function applyShapeDesign(component, forPublication = false) {
       const shapes = {
-        arrowDown: ['下矢印', '30% 0,70% 0,70% 55%,100% 55%,50% 100%,0 55%,30% 55%'],
-        arrowUp: ['上矢印', '50% 0,100% 45%,70% 45%,70% 100%,30% 100%,30% 45%,0 45%'],
-        arrowRight: ['右矢印', '0 30%,55% 30%,55% 0,100% 50%,55% 100%,55% 70%,0 70%'],
-        arrowLeft: ['左矢印', '0 50%,45% 0,45% 30%,100% 30%,100% 70%,45% 70%,45% 100%'],
-        triangleDown: ['下三角', '0 0,100% 0,50% 100%'],
-        triangleUp: ['上三角', '50% 0,100% 100%,0 100%'],
-        triangleRight: ['右三角', '0 0,100% 50%,0 100%'],
-        triangleLeft: ['左三角', '100% 0,100% 100%,0 50%']
+        arrowDown: ['下矢印', '30% 0,70% 0,70% 55%,100% 55%,50% 100%,0 55%,30% 55%', '↓'],
+        arrowUp: ['上矢印', '50% 0,100% 45%,70% 45%,70% 100%,30% 100%,30% 45%,0 45%', '↑'],
+        arrowRight: ['右矢印', '0 30%,55% 30%,55% 0,100% 50%,55% 100%,55% 70%,0 70%', '→'],
+        arrowLeft: ['左矢印', '0 50%,45% 0,45% 30%,100% 30%,100% 70%,45% 70%,45% 100%', '←'],
+        triangleDown: ['下三角', '0 0,100% 0,50% 100%', '▼'],
+        triangleUp: ['上三角', '50% 0,100% 100%,0 100%', '▲'],
+        triangleRight: ['右三角', '0 0,100% 50%,0 100%', '▶'],
+        triangleLeft: ['左三角', '100% 0,100% 100%,0 50%', '◀'],
+        chevronRight: ['山形（右）', '', '❯', 'symbol'],
+        chevronDown: ['山形（下）', '', '⌄', 'symbol'],
+        doubleChevronRight: ['二重山形（右）', '', '»', 'symbol'],
+        doubleChevronDown: ['二重山形（下）', '', '⌄⌄', 'symbol'],
+        arrowBothHorizontal: ['双方向矢印（左右）', '', '⇄', 'symbol'],
+        arrowBothVertical: ['双方向矢印（上下）', '', '⇅', 'symbol'],
+        arrowTurnRight: ['曲がり矢印（右）', '', '↳', 'symbol'],
+        arrowTurnLeft: ['曲がり矢印（左）', '', '↲', 'symbol']
       };
       const data = component.dataset;
       const kind = Object.hasOwn(shapes, data.shapeKind) ? data.shapeKind : 'arrowDown';
@@ -15207,10 +15285,13 @@ ${bodyHtml}
       const visual = document.createElement('span');
       visual.dataset.shapeVisual = 'true';
       visual.setAttribute('aria-hidden', 'true');
-      visual.style.cssText = `display:inline-block;width:${width}px;max-width:100%;aspect-ratio:${width} / ${height};background-color:${color};clip-path:polygon(${shapes[kind][1]});vertical-align:middle;`;
+      const symbolShape = shapes[kind][3] === 'symbol';
+      visual.style.cssText = symbolShape
+        ? `display:inline-block;width:${width}px;max-width:100%;min-height:${height}px;color:${color};font-size:${Math.min(width, height)}px;font-family:Arial,sans-serif;font-weight:bold;line-height:${height}px;text-align:center;text-decoration:none;white-space:nowrap;vertical-align:middle;`
+        : `display:inline-block;width:${width}px;max-width:100%;aspect-ratio:${width} / ${height};background-color:${color};clip-path:polygon(${shapes[kind][1]});vertical-align:middle;`;
+      if (symbolShape) visual.textContent = shapes[kind][2];
       if (forPublication) {
-        const symbols = {arrowDown:'↓', arrowUp:'↑', arrowRight:'→', arrowLeft:'←', triangleDown:'▼', triangleUp:'▲', triangleRight:'▶', triangleLeft:'◀'};
-        visual.textContent = symbols[kind];
+        visual.textContent = shapes[kind][2];
         visual.removeAttribute('aria-hidden');
         visual.style.cssText = `display:inline-block;width:${width}px;max-width:100%;min-height:${height}px;color:${color};font-size:${Math.min(width, height)}px;font-family:Arial,sans-serif;font-weight:bold;line-height:1;text-align:center;vertical-align:middle;`;
         component.style.lineHeight = '1';
@@ -17761,7 +17842,7 @@ ${bodyHtml}
           settings: collectSettings(),
           previewHtml: formattedPreviewHtml
         }));
-        setStatus(`自動保存しました（${formatAutosaveTime(savedAt)}）`);
+        setStatus(`このブラウザ内に自動保存しました（${formatAutosaveTime(savedAt)}）`);
       } catch (error) {
         console.warn("自動保存に失敗しました", error);
       }
@@ -17799,7 +17880,7 @@ ${bodyHtml}
       dialog.className = "table-csv-dialog autosave-history-dialog";
       dialog.innerHTML = `<form method="dialog">
         <h3>自動保存から復元</h3>
-        <p class="page-note">直前の保存より内容が大幅に減った場合は、その前の版もここに残しています。</p>
+        <p class="page-note">このブラウザ内（localStorage）に保存されています。他の端末やブラウザからは参照できません。直前の保存より内容が大幅に減った場合は、その前の版もここに残しています。</p>
         <div class="autosave-history-list"></div>
         <div class="preset-gallery-dialog-actions">
           <button class="secondary" type="submit" value="cancel">閉じる</button>
