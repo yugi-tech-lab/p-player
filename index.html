@@ -12191,7 +12191,7 @@ ${bodyHtml}
       leadPropertyBlock.innerHTML = `<label>リード文</label>
         <div class="list-settings-group"><strong>デザイン</strong>
           <div class="row">
-            <div class="field"><label for="leadPreset">スタイル</label><select id="leadPreset"><option value="centered">中央キャッチ</option><option value="accent">左アクセント</option><option value="lines">上ライン</option><option value="band">カラーバンド</option><option value="frame">囲みフレーム</option><option value="quote">引用風</option><option value="dotted">上ドットライン</option><option value="badgeSolid">塗りバッジ</option><option value="badgeOutline">枠線バッジ</option><option value="badgeTag">タグバッジ</option><option value="badgeStamp">スタンプバッジ</option><option value="custom">カスタム</option></select></div>
+            <div class="field"><label for="leadPreset">スタイル</label><select id="leadPreset"><option value="centered">中央キャッチ</option><option value="accent">左アクセント</option><option value="lines">上下ライン</option><option value="band">カラーバンド</option><option value="frame">囲みフレーム</option><option value="quote">引用風</option><option value="underline">下線アクセント</option><option value="dotted">ドットライン</option><option value="badgeSolid">塗りバッジ</option><option value="badgeOutline">枠線バッジ</option><option value="badgeTag">タグバッジ</option><option value="badgeStamp">スタンプバッジ</option><option value="custom">カスタム</option></select></div>
             <div class="field"><label for="leadAlign">文字揃え</label><select id="leadAlign"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div>
             <div class="field"><label for="leadPlacement">パーツ配置</label><select id="leadPlacement"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div>
           </div>
@@ -13102,7 +13102,7 @@ ${bodyHtml}
           if (["disc", "circle", "square", "decimal", "none"].includes(markerType)) elements.listMarker.value = markerType;
         }
         if (componentType === "lead") {
-          leadControls.preset.value = ["centered", "accent", "lines", "band", "frame", "quote", "dotted", "badgeSolid", "badgeOutline", "badgeTag", "badgeStamp", "custom"].includes(component.dataset.leadPreset)
+          leadControls.preset.value = ["centered", "accent", "lines", "band", "frame", "quote", "underline", "dotted", "badgeSolid", "badgeOutline", "badgeTag", "badgeStamp", "custom"].includes(component.dataset.leadPreset)
             ? component.dataset.leadPreset : "custom";
           leadControls.align.value = ["left", "center", "right"].includes(component.dataset.leadAlign)
             ? component.dataset.leadAlign : "center";
@@ -14050,7 +14050,7 @@ ${bodyHtml}
           while (component.firstChild) content.appendChild(component.firstChild);
           component.appendChild(content);
         }
-        const decoratedPresets = ["centered", "accent", "lines", "band", "frame", "quote", "dotted", "badgeSolid", "badgeOutline", "badgeTag", "badgeStamp"];
+        const decoratedPresets = ["centered", "accent", "lines", "band", "frame", "quote", "underline", "dotted", "badgeSolid", "badgeOutline", "badgeTag", "badgeStamp"];
         const preset = [...decoratedPresets, "custom"].includes(leadControls.preset.value)
           ? leadControls.preset.value : "custom";
         const decoration = preset === "custom"
@@ -14097,6 +14097,7 @@ ${bodyHtml}
         } else if (decoration === "lines") {
           component.style.padding = "14px 8px";
           component.style.borderTop = `2px solid ${accent}`;
+          component.style.borderBottom = `2px solid ${accent}`;
         } else if (decoration === "band") {
           component.style.padding = "16px 20px";
           component.style.border = `1px solid ${colorWithAlpha(accent, "55")}`;
@@ -14110,9 +14111,13 @@ ${bodyHtml}
           component.style.padding = "12px 18px";
           component.style.borderLeft = `5px solid ${accent}`;
           component.style.background = colorWithAlpha(accent, "0d");
+        } else if (decoration === "underline") {
+          component.style.padding = "0 4px 10px";
+          component.style.borderBottom = `5px solid ${accent}`;
         } else if (decoration === "dotted") {
           component.style.padding = "14px 8px";
           component.style.borderTop = `3px dotted ${accent}`;
+          component.style.borderBottom = `3px dotted ${accent}`;
         } else if (decoration === "badgeSolid") {
           component.style.padding = "9px 20px";
           component.style.borderRadius = "999px";
@@ -14137,6 +14142,7 @@ ${bodyHtml}
         content.style.fontWeight = weight;
         content.style.lineHeight = String(lineHeight);
         content.style.textAlign = align;
+        content.style.textDecoration = "none";
         content.style.fontStyle = decoration === "quote" ? "italic" : "normal";
         content.style.letterSpacing = decoration === "badgeStamp" ? "0.08em" : "normal";
         content.style.overflowWrap = "anywhere";
@@ -15302,6 +15308,7 @@ ${bodyHtml}
         band: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "100", marginTop: "10", marginBottom: "10" },
         frame: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "90", marginTop: "10", marginBottom: "10" },
         quote: { align: "left", placement: "center", size: "25", weight: "600", lineHeight: "1.8", maxWidth: "85", marginTop: "10", marginBottom: "10" },
+        underline: { align: "left", placement: "left", size: "27", weight: "700", lineHeight: "1.6", maxWidth: "85", marginTop: "10", marginBottom: "10" },
         dotted: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "90", marginTop: "10", marginBottom: "10" },
         badgeSolid: { align: "center", placement: "left", size: "22", weight: "700", lineHeight: "1.4", maxWidth: "90", marginTop: "10", marginBottom: "10" },
         badgeOutline: { align: "center", placement: "left", size: "22", weight: "700", lineHeight: "1.4", maxWidth: "90", marginTop: "10", marginBottom: "10" },
@@ -15826,7 +15833,7 @@ ${bodyHtml}
       const blocks = {
         document: `<div data-inserted-component="document" data-document-url="" data-document-title="" data-document-caption="" data-document-height="420" contenteditable="false" style="margin:14px 0;padding:20px;border:1px dashed #94a3b8;border-radius:8px;">設定でSpeaker Deck・SlideShare、またはGoogleドライブ上のPDF共有URLを入力してください。</div>`,
         shape: shapeComponentHtml(),
-        lead: `<div data-inserted-component="lead" data-lead-preset="centered" data-lead-size="28" data-lead-weight="700" data-lead-align="center" data-lead-color="#172033" data-lead-accent="#0f8b8d" data-lead-line-height="1.6" data-lead-max-width="85" data-lead-placement="center" data-lead-margin-top="10" data-lead-margin-bottom="10" contenteditable="false" style="box-sizing:border-box;width:85%;max-width:100%;margin:10px auto;padding:0;border:0;background:transparent;"><div data-lead-content="true" contenteditable="true" style="color:#172033;font-size:clamp(20px,3vw,28px);font-weight:700;line-height:1.6;text-align:center;overflow-wrap:anywhere;word-break:break-word;">作品の魅力や結論を、印象的な一文で伝えます。</div></div>`,
+        lead: `<div data-inserted-component="lead" data-lead-preset="centered" data-lead-size="28" data-lead-weight="700" data-lead-align="center" data-lead-color="#172033" data-lead-accent="#0f8b8d" data-lead-line-height="1.6" data-lead-max-width="85" data-lead-placement="center" data-lead-margin-top="10" data-lead-margin-bottom="10" contenteditable="false" style="box-sizing:border-box;width:85%;max-width:100%;margin:10px auto;padding:0;border:0;background:transparent;"><div data-lead-content="true" contenteditable="true" style="color:#172033;font-size:clamp(20px,3vw,28px);font-weight:700;line-height:1.6;text-align:center;text-decoration:none;overflow-wrap:anywhere;word-break:break-word;">作品の魅力や結論を、印象的な一文で伝えます。</div></div>`,
         list: `<ul data-inserted-component="list" data-list-marker="disc" style="margin:14px 0;padding:0 0 0 24px;list-style-type:disc;"><li contenteditable="true">項目1</li><li contenteditable="true">項目2</li><li contenteditable="true">項目3</li></ul>`,
         note: `<div data-inserted-component="note" contenteditable="true" style="margin:14px 0;padding:12px 16px;border-left:5px solid #0f8b8d;background:#eef8f8;border-radius:8px;">メモや注意事項を入力</div>`,
         quote: `<blockquote data-inserted-component="quote" contenteditable="true" style="margin:14px 0;padding:12px 16px;border-left:5px solid #64748b;background:#f4f6f8;color:#334155;">引用文を入力</blockquote>`,
@@ -17036,6 +17043,21 @@ ${bodyHtml}
         const range = selection.getRangeAt(0);
         range.deleteContents();
         range.insertNode(node);
+        if (type === "lead") {
+          // A block lead inserted at a caret inside <u>/<span>/etc. must not
+          // inherit that inline decoration. Split each wrapper around the
+          // insertion point while keeping the surrounding text formatted.
+          while (node.parentElement && node.parentElement !== enclosingComponent) {
+            const wrapper = node.parentElement;
+            if (wrapper.hasAttribute("data-inserted-component")) break;
+            const trailingWrapper = wrapper.cloneNode(false);
+            trailingWrapper.removeAttribute("id");
+            while (node.nextSibling) trailingWrapper.appendChild(node.nextSibling);
+            wrapper.after(node);
+            if (trailingWrapper.childNodes.length) node.after(trailingWrapper);
+            if (!wrapper.childNodes.length) wrapper.remove();
+          }
+        }
       } else if (enclosingComponent && elements.preview.contains(enclosingComponent)) {
         enclosingComponent.after(node);
       } else if (selection.rangeCount) {
@@ -18994,16 +19016,9 @@ ${bodyHtml}
         component.contentEditable = ["note", "quote"].includes(type) ? "true" : "false";
         if (type === "list") component.querySelectorAll("li").forEach((item) => { item.contentEditable = "true"; });
         if (type === "lead") {
-          component.querySelector("[data-lead-content]")?.setAttribute("contenteditable", "true");
-          const decoration = component.dataset.leadDecoration || component.dataset.leadPreset;
-          if (["lines", "dotted", "underline"].includes(decoration)) {
-            component.style.borderBottom = "0";
-          }
-          if (decoration === "underline") {
-            component.dataset.leadPreset = "custom";
-            component.dataset.leadDecoration = "centered";
-            component.style.padding = "0";
-          }
+          const leadContent = component.querySelector("[data-lead-content]");
+          leadContent?.setAttribute("contenteditable", "true");
+          if (leadContent && !leadContent.style.textDecoration) leadContent.style.textDecoration = "none";
         }
         if (type === "table") component.querySelectorAll("th,td").forEach((cell) => { cell.contentEditable = "true"; });
         if (["image", "imageText", "imagePair"].includes(type)) {

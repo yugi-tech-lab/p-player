@@ -858,6 +858,27 @@ class EditorTests(unittest.TestCase):
               insertComponentAtSelection('lead');
               return {body, lead:activeInsertedComponent, inside:body.contains(activeInsertedComponent)};
             };
+            const formattedFragment = document.createDocumentFragment();
+            const underline = document.createElement('u');
+            underline.textContent = '前後';
+            formattedFragment.append(underline);
+            const formattedBody = createDocumentBlockFromFragment('body', formattedFragment, readDocumentBlockSettings('body'));
+            elements.preview.replaceChildren(formattedBody);
+            activeInsertedComponent = formattedBody;
+            const formattedText = formattedBody.querySelector('u').firstChild;
+            const formattedRange = document.createRange();
+            formattedRange.setStart(formattedText, 1);
+            formattedRange.collapse(true);
+            getSelection().removeAllRanges();
+            getSelection().addRange(formattedRange);
+            savedPreviewRange = formattedRange.cloneRange();
+            insertComponentAtSelection('lead');
+            const splitLead = activeInsertedComponent;
+            const splitFormatting = {
+              nestedInUnderline:!!splitLead.closest('u'),
+              leadInsideBody:formattedBody.contains(splitLead),
+              underlinedText:[...formattedBody.querySelectorAll('u')].map(item => item.textContent).join('|')
+            };
             const plainResult = insertIntoBody(readDocumentBlockSettings('body'), '通常本文');
             const cardResult = insertIntoBody(bodySettingsForMode('card'), '本文カード');
             const body = cardResult.body;
@@ -866,7 +887,7 @@ class EditorTests(unittest.TestCase):
             properties._sync();
             const preset = document.querySelector('#leadPreset');
             const states = {};
-            for (const value of ['accent', 'lines', 'band', 'frame', 'quote', 'dotted', 'badgeSolid', 'badgeOutline', 'badgeTag', 'badgeStamp', 'centered']) {
+            for (const value of ['accent', 'lines', 'band', 'frame', 'quote', 'underline', 'dotted', 'badgeSolid', 'badgeOutline', 'badgeTag', 'badgeStamp', 'centered']) {
               preset.value = value;
               preset.dispatchEvent(new Event('change', {bubbles:true}));
               states[value] = {
@@ -888,6 +909,10 @@ class EditorTests(unittest.TestCase):
             }
             preset.value = 'band';
             preset.dispatchEvent(new Event('change', {bubbles:true}));
+            body.style.textDecoration = 'underline';
+            const inheritedDecoration = getComputedStyle(lead.querySelector('[data-lead-content]')).textDecorationLine;
+            lead.querySelector('[data-lead-content]').innerHTML = '<u data-explicit-underline>明示的な下線</u>';
+            const explicitDecoration = getComputedStyle(lead.querySelector('[data-explicit-underline]')).textDecorationLine;
             document.querySelector('#leadSize').value = '40';
             document.querySelector('#leadMaxWidth').value = '70';
             document.querySelector('#leadPlacement').value = 'right';
@@ -911,49 +936,43 @@ class EditorTests(unittest.TestCase):
             const exported = formatOutputHtml(getPersistablePreviewHtml());
             importArticleHtml(exported, 'lead.html');
             const restored = elements.preview.querySelector('[data-inserted-component="lead"]');
-            const legacy = document.createElement('div');
-            legacy.dataset.insertedComponent = 'lead';
-            legacy.dataset.leadPreset = 'underline';
-            legacy.dataset.leadDecoration = 'underline';
-            legacy.style.cssText = 'padding:0 4px 10px;border-bottom:5px solid #0f8b8d;';
-            legacy.innerHTML = '<div data-lead-content="true">旧リード</div>';
-            elements.preview.append(legacy);
-            restoreImportedEditorStructure(elements.preview);
             return {
               menu:[...document.querySelectorAll('#componentInsertSelect option')].some(option => option.value === 'lead'),
-              underlinePreset:!!document.querySelector('#leadPreset option[value="underline"]'),
               quick:!!document.querySelector('.component-quick-button[data-component-type="lead"]'),
               insidePlainBody:plainResult.inside,
               insideBodyCard:cardResult.inside,
+              splitFormatting,
               states,
+              inheritedDecoration,
+              explicitDecoration,
               custom,
               restored:!!restored,
               restoredText:restored?.querySelector('[data-lead-content]')?.innerText,
               restoredEditable:restored?.querySelector('[data-lead-content]')?.getAttribute('contenteditable'),
-              isHeading:!!restored?.querySelector('h1,h2,h3,h4,h5,h6'),
-              legacyPreset:legacy.dataset.leadPreset,
-              legacyDecoration:legacy.dataset.leadDecoration,
-              legacyBottom:legacy.style.borderBottomWidth,
-              legacyPadding:legacy.style.padding
+              restoredDecoration:restored?.querySelector('[data-lead-content]')?.style.textDecoration,
+              isHeading:!!restored?.querySelector('h1,h2,h3,h4,h5,h6')
             };
         }""")
         self.assertTrue(result["menu"])
-        self.assertFalse(result["underlinePreset"])
         self.assertTrue(result["quick"])
         self.assertTrue(result["insidePlainBody"])
         self.assertTrue(result["insideBodyCard"])
+        self.assertFalse(result["splitFormatting"]["nestedInUnderline"])
+        self.assertTrue(result["splitFormatting"]["leadInsideBody"])
+        self.assertEqual(result["splitFormatting"]["underlinedText"], "前|後")
         self.assertEqual(result["states"]["accent"]["left"], "6px")
         self.assertEqual(result["states"]["accent"]["align"], "left")
         self.assertEqual(result["states"]["lines"]["top"], "2px")
-        self.assertEqual(result["states"]["lines"]["bottom"], "0px")
+        self.assertEqual(result["states"]["lines"]["bottom"], "2px")
         self.assertEqual(result["states"]["band"]["radius"], "8px")
         self.assertNotEqual(result["states"]["band"]["background"], "")
         self.assertEqual(result["states"]["frame"]["top"], "2px")
         self.assertEqual(result["states"]["frame"]["radius"], "10px")
         self.assertEqual(result["states"]["quote"]["left"], "5px")
         self.assertEqual(result["states"]["quote"]["fontStyle"], "italic")
+        self.assertEqual(result["states"]["underline"]["bottom"], "5px")
         self.assertEqual(result["states"]["dotted"]["style"], "dotted")
-        self.assertEqual(result["states"]["dotted"]["bottom"], "0px")
+        self.assertEqual(result["states"]["dotted"]["bottom"], "3px")
         self.assertEqual(result["states"]["badgeSolid"]["width"], "fit-content")
         self.assertEqual(result["states"]["badgeSolid"]["radius"], "999px")
         self.assertNotEqual(result["states"]["badgeSolid"]["background"], "")
@@ -971,6 +990,8 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["states"]["centered"]["marginBottom"], "10px")
         self.assertEqual(result["states"]["accent"]["marginTop"], "10px")
         self.assertEqual(result["states"]["lines"]["marginBottom"], "10px")
+        self.assertEqual(result["inheritedDecoration"], "none")
+        self.assertEqual(result["explicitDecoration"], "underline")
         self.assertEqual(result["custom"]["preset"], "custom")
         self.assertIn("40px", result["custom"]["fontSize"])
         self.assertEqual(result["custom"]["width"], "70%")
@@ -983,11 +1004,8 @@ class EditorTests(unittest.TestCase):
         self.assertTrue(result["restored"])
         self.assertEqual(result["restoredText"], "大型リード文\n補足メッセージ")
         self.assertEqual(result["restoredEditable"], "true")
+        self.assertEqual(result["restoredDecoration"], "none")
         self.assertFalse(result["isHeading"])
-        self.assertEqual(result["legacyPreset"], "custom")
-        self.assertEqual(result["legacyDecoration"], "centered")
-        self.assertEqual(result["legacyBottom"], "0px")
-        self.assertEqual(result["legacyPadding"], "0px")
 
     def test_image_insert_ui_is_unified_and_legacy_types_remain_supported(self):
         result = self.page.evaluate("""() => {
