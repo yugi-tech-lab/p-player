@@ -144,6 +144,42 @@ class EditorTests(unittest.TestCase):
             self.assertTrue(state['active'])
             self.assertEqual(state['editable'], 'true')
 
+    def test_active_plain_body_caret_has_editor_only_left_inset(self):
+        result = self.page.evaluate("""() => {
+            const plain = document.createElement('div');
+            plain.dataset.insertedComponent = 'body';
+            plain.textContent = '通常本文';
+            applyDocumentBlockAppearance(plain, {...readDocumentBlockSettings('body'), includeCard:false, cardPadding:'0'});
+            elements.preview.replaceChildren(plain);
+            activeInsertedComponent = plain;
+            setDocumentBlockControls(plain);
+            const activePadding = getComputedStyle(plain).paddingLeft;
+            const caretColor = getComputedStyle(plain).caretColor;
+            const saved = document.createElement('div');
+            saved.innerHTML = getPersistablePreviewHtml();
+            const restoredPlain = saved.querySelector('[data-inserted-component="body"]');
+
+            const card = document.createElement('div');
+            card.dataset.insertedComponent = 'body';
+            card.textContent = '本文カード';
+            applyDocumentBlockAppearance(card, bodySettingsForMode('card'));
+            elements.preview.replaceChildren(card);
+            activeInsertedComponent = card;
+            setDocumentBlockControls(card);
+            return {
+              activePadding,
+              caretColor,
+              savedClass:restoredPlain.className,
+              savedInlinePadding:restoredPlain.style.paddingLeft,
+              cardPadding:getComputedStyle(card).paddingLeft
+            };
+        }""")
+        self.assertEqual(result['activePadding'], '5px')
+        self.assertIn('15, 139, 141', result['caretColor'])
+        self.assertEqual(result['savedClass'], '')
+        self.assertEqual(result['savedInlinePadding'], '')
+        self.assertNotEqual(result['cardPadding'], '5px')
+
     def test_header_shows_automatic_last_updated_date(self):
         result = self.page.evaluate("""() => {
             const label = document.querySelector('#lastUpdated');
@@ -816,21 +852,26 @@ class EditorTests(unittest.TestCase):
 
     def test_large_lead_part_presets_settings_and_html_restore(self):
         result = self.page.evaluate("""() => {
-            const fragment = document.createDocumentFragment();
-            fragment.append('選択中の本文');
-            const body = createDocumentBlockFromFragment('body', fragment, readDocumentBlockSettings('body'));
-            elements.preview.replaceChildren(body);
-            activeInsertedComponent = body;
-            const range = document.createRange();
-            range.selectNodeContents(body);
-            range.collapse(false);
-            const selection = getSelection();
-            selection.removeAllRanges();
-            selection.addRange(range);
-            savedPreviewRange = range.cloneRange();
-            insertComponentAtSelection('lead');
-            const lead = activeInsertedComponent;
-            const outsideBody = body.nextElementSibling === lead && !body.contains(lead);
+            const insertIntoBody = (settings, text) => {
+              const fragment = document.createDocumentFragment();
+              fragment.append(text);
+              const body = createDocumentBlockFromFragment('body', fragment, settings);
+              elements.preview.replaceChildren(body);
+              activeInsertedComponent = body;
+              const range = document.createRange();
+              range.selectNodeContents(body);
+              range.collapse(false);
+              const selection = getSelection();
+              selection.removeAllRanges();
+              selection.addRange(range);
+              savedPreviewRange = range.cloneRange();
+              insertComponentAtSelection('lead');
+              return {body, lead:activeInsertedComponent, inside:body.contains(activeInsertedComponent)};
+            };
+            const plainResult = insertIntoBody(readDocumentBlockSettings('body'), '通常本文');
+            const cardResult = insertIntoBody(bodySettingsForMode('card'), '本文カード');
+            const body = cardResult.body;
+            const lead = cardResult.lead;
             const properties = document.querySelector('.inserted-component-properties');
             properties._sync();
             const preset = document.querySelector('#leadPreset');
@@ -883,7 +924,8 @@ class EditorTests(unittest.TestCase):
             return {
               menu:[...document.querySelectorAll('#componentInsertSelect option')].some(option => option.value === 'lead'),
               quick:!!document.querySelector('.component-quick-button[data-component-type="lead"]'),
-              outsideBody,
+              insidePlainBody:plainResult.inside,
+              insideBodyCard:cardResult.inside,
               states,
               custom,
               restored:!!restored,
@@ -894,7 +936,8 @@ class EditorTests(unittest.TestCase):
         }""")
         self.assertTrue(result["menu"])
         self.assertTrue(result["quick"])
-        self.assertTrue(result["outsideBody"])
+        self.assertTrue(result["insidePlainBody"])
+        self.assertTrue(result["insideBodyCard"])
         self.assertEqual(result["states"]["accent"]["left"], "6px")
         self.assertEqual(result["states"]["accent"]["align"], "left")
         self.assertEqual(result["states"]["lines"]["top"], "2px")
@@ -920,6 +963,10 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["states"]["badgeStamp"]["top"], "4px")
         self.assertEqual(result["states"]["badgeStamp"]["style"], "double")
         self.assertEqual(result["states"]["centered"]["align"], "center")
+        self.assertEqual(result["states"]["centered"]["marginTop"], "10px")
+        self.assertEqual(result["states"]["centered"]["marginBottom"], "10px")
+        self.assertEqual(result["states"]["accent"]["marginTop"], "10px")
+        self.assertEqual(result["states"]["lines"]["marginBottom"], "10px")
         self.assertEqual(result["custom"]["preset"], "custom")
         self.assertIn("40px", result["custom"]["fontSize"])
         self.assertEqual(result["custom"]["width"], "70%")

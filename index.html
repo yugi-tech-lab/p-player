@@ -1341,6 +1341,11 @@
       outline-offset: 3px;
     }
 
+    [data-inserted-component="body"].is-document-block-active {
+      padding-left: 5px;
+      caret-color: #0f8b8d;
+    }
+
     .document-property-scope {
       display: flex;
       align-items: center;
@@ -12203,8 +12208,8 @@ ${bodyHtml}
         <div class="list-settings-group"><strong>幅・余白</strong>
           <div class="row">
             <div class="field"><label for="leadMaxWidth">最大横幅</label><div class="unit-input"><input id="leadMaxWidth" type="number" min="30" max="100" value="85"><span>%</span></div></div>
-            <div class="field"><label for="leadMarginTop">上余白</label><div class="unit-input"><input id="leadMarginTop" type="number" min="0" max="120" value="28"><span>px</span></div></div>
-            <div class="field"><label for="leadMarginBottom">下余白</label><div class="unit-input"><input id="leadMarginBottom" type="number" min="0" max="120" value="28"><span>px</span></div></div>
+            <div class="field"><label for="leadMarginTop">上余白</label><div class="unit-input"><input id="leadMarginTop" type="number" min="0" max="120" value="10"><span>px</span></div></div>
+            <div class="field"><label for="leadMarginBottom">下余白</label><div class="unit-input"><input id="leadMarginBottom" type="number" min="0" max="120" value="10"><span>px</span></div></div>
           </div>
         </div>`;
       listPropertyBlock.after(leadPropertyBlock);
@@ -15294,14 +15299,14 @@ ${bodyHtml}
         input.addEventListener("change", update);
       });
       const leadPresets = {
-        centered: { align: "center", placement: "center", size: "28", weight: "700", lineHeight: "1.6", maxWidth: "85", marginTop: "28", marginBottom: "28" },
-        accent: { align: "left", placement: "left", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "100", marginTop: "24", marginBottom: "24" },
-        lines: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "90", marginTop: "28", marginBottom: "28" },
-        band: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "100", marginTop: "24", marginBottom: "24" },
-        frame: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "90", marginTop: "28", marginBottom: "28" },
-        quote: { align: "left", placement: "center", size: "25", weight: "600", lineHeight: "1.8", maxWidth: "85", marginTop: "28", marginBottom: "28" },
-        underline: { align: "left", placement: "left", size: "27", weight: "700", lineHeight: "1.6", maxWidth: "85", marginTop: "24", marginBottom: "24" },
-        dotted: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "90", marginTop: "28", marginBottom: "28" },
+        centered: { align: "center", placement: "center", size: "28", weight: "700", lineHeight: "1.6", maxWidth: "85", marginTop: "10", marginBottom: "10" },
+        accent: { align: "left", placement: "left", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "100", marginTop: "10", marginBottom: "10" },
+        lines: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "90", marginTop: "10", marginBottom: "10" },
+        band: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "100", marginTop: "10", marginBottom: "10" },
+        frame: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "90", marginTop: "10", marginBottom: "10" },
+        quote: { align: "left", placement: "center", size: "25", weight: "600", lineHeight: "1.8", maxWidth: "85", marginTop: "10", marginBottom: "10" },
+        underline: { align: "left", placement: "left", size: "27", weight: "700", lineHeight: "1.6", maxWidth: "85", marginTop: "10", marginBottom: "10" },
+        dotted: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "90", marginTop: "10", marginBottom: "10" },
         badgeSolid: { align: "center", placement: "left", size: "22", weight: "700", lineHeight: "1.4", maxWidth: "90", marginTop: "10", marginBottom: "10" },
         badgeOutline: { align: "center", placement: "left", size: "22", weight: "700", lineHeight: "1.4", maxWidth: "90", marginTop: "10", marginBottom: "10" },
         badgeTag: { align: "left", placement: "left", size: "22", weight: "700", lineHeight: "1.4", maxWidth: "90", marginTop: "10", marginBottom: "10" },
@@ -15825,7 +15830,7 @@ ${bodyHtml}
       const blocks = {
         document: `<div data-inserted-component="document" data-document-url="" data-document-title="" data-document-caption="" data-document-height="420" contenteditable="false" style="margin:14px 0;padding:20px;border:1px dashed #94a3b8;border-radius:8px;">設定でSpeaker Deck・SlideShare、またはGoogleドライブ上のPDF共有URLを入力してください。</div>`,
         shape: shapeComponentHtml(),
-        lead: `<div data-inserted-component="lead" data-lead-preset="centered" data-lead-size="28" data-lead-weight="700" data-lead-align="center" data-lead-color="#172033" data-lead-accent="#0f8b8d" data-lead-line-height="1.6" data-lead-max-width="85" data-lead-placement="center" data-lead-margin-top="28" data-lead-margin-bottom="28" contenteditable="false" style="box-sizing:border-box;width:85%;max-width:100%;margin:28px auto;padding:0;border:0;background:transparent;"><div data-lead-content="true" contenteditable="true" style="color:#172033;font-size:clamp(20px,3vw,28px);font-weight:700;line-height:1.6;text-align:center;overflow-wrap:anywhere;word-break:break-word;">作品の魅力や結論を、印象的な一文で伝えます。</div></div>`,
+        lead: `<div data-inserted-component="lead" data-lead-preset="centered" data-lead-size="28" data-lead-weight="700" data-lead-align="center" data-lead-color="#172033" data-lead-accent="#0f8b8d" data-lead-line-height="1.6" data-lead-max-width="85" data-lead-placement="center" data-lead-margin-top="10" data-lead-margin-bottom="10" contenteditable="false" style="box-sizing:border-box;width:85%;max-width:100%;margin:10px auto;padding:0;border:0;background:transparent;"><div data-lead-content="true" contenteditable="true" style="color:#172033;font-size:clamp(20px,3vw,28px);font-weight:700;line-height:1.6;text-align:center;overflow-wrap:anywhere;word-break:break-word;">作品の魅力や結論を、印象的な一文で伝えます。</div></div>`,
         list: `<ul data-inserted-component="list" data-list-marker="disc" style="margin:14px 0;padding:0 0 0 24px;list-style-type:disc;"><li contenteditable="true">項目1</li><li contenteditable="true">項目2</li><li contenteditable="true">項目3</li></ul>`,
         note: `<div data-inserted-component="note" contenteditable="true" style="margin:14px 0;padding:12px 16px;border-left:5px solid #0f8b8d;background:#eef8f8;border-radius:8px;">メモや注意事項を入力</div>`,
         quote: `<blockquote data-inserted-component="quote" contenteditable="true" style="margin:14px 0;padding:12px 16px;border-left:5px solid #64748b;background:#f4f6f8;color:#334155;">引用文を入力</blockquote>`,
@@ -17019,8 +17024,7 @@ ${bodyHtml}
       holder.innerHTML = html;
       const node = holder.firstElementChild;
       if (!node) return;
-      const insertInsideBody = type !== "lead"
-        && enclosingComponent?.dataset.insertedComponent === "body"
+      const insertInsideBody = enclosingComponent?.dataset.insertedComponent === "body"
         && selection.rangeCount
         && enclosingComponent.contains(selection.getRangeAt(0).commonAncestorContainer);
       if (type === "toc") {
