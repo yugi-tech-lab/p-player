@@ -8812,7 +8812,7 @@ ${bodyHtml}
       return {
         heading: "見出し",
         body: "本文",
-        lead: "大型リード文",
+        lead: "リード文",
         table: "テーブル",
         list: "リスト",
         image: "画像",
@@ -10215,7 +10215,7 @@ ${bodyHtml}
         insertSelect.id = "componentInsertSelect";
         insertSelect.title = "プレビューへパーツを挿入";
         insertSelect.innerHTML = `<option value="">パーツを挿入</option>
-          <option value="lead">大型リード文</option>
+          <option value="lead">リード文</option>
           <option value="list">リスト</option>
           <option value="note">メモ</option>
           <option value="quote">引用</option>
@@ -10241,7 +10241,7 @@ ${bodyHtml}
         const quickButtons = document.createElement("span");
         quickButtons.className = "component-quick-buttons";
         [
-          ["lead", "Aa", "大型リード文"],
+          ["lead", "Aa", "リード文"],
           ["list", "📋", "リスト"],
           ["note", "📝", "メモ"],
           ["quote", "💬", "引用"],
@@ -12188,10 +12188,10 @@ ${bodyHtml}
       };
       const leadPropertyBlock = document.createElement("div");
       leadPropertyBlock.className = "field list-component-settings lead-component-settings";
-      leadPropertyBlock.innerHTML = `<label>大型リード文</label>
+      leadPropertyBlock.innerHTML = `<label>リード文</label>
         <div class="list-settings-group"><strong>デザイン</strong>
           <div class="row">
-            <div class="field"><label for="leadPreset">スタイル</label><select id="leadPreset"><option value="centered">中央キャッチ</option><option value="accent">左アクセント</option><option value="lines">上下ライン</option><option value="band">カラーバンド</option><option value="frame">囲みフレーム</option><option value="quote">引用風</option><option value="underline">下線アクセント</option><option value="dotted">ドットライン</option><option value="badgeSolid">塗りバッジ</option><option value="badgeOutline">枠線バッジ</option><option value="badgeTag">タグバッジ</option><option value="badgeStamp">スタンプバッジ</option><option value="custom">カスタム</option></select></div>
+            <div class="field"><label for="leadPreset">スタイル</label><select id="leadPreset"><option value="centered">中央キャッチ</option><option value="accent">左アクセント</option><option value="lines">上ライン</option><option value="band">カラーバンド</option><option value="frame">囲みフレーム</option><option value="quote">引用風</option><option value="dotted">上ドットライン</option><option value="badgeSolid">塗りバッジ</option><option value="badgeOutline">枠線バッジ</option><option value="badgeTag">タグバッジ</option><option value="badgeStamp">スタンプバッジ</option><option value="custom">カスタム</option></select></div>
             <div class="field"><label for="leadAlign">文字揃え</label><select id="leadAlign"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div>
             <div class="field"><label for="leadPlacement">パーツ配置</label><select id="leadPlacement"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div>
           </div>
@@ -12778,7 +12778,7 @@ ${bodyHtml}
         return appliedCount;
       };
       const componentTypeNames = {
-        lead: "大型リード文",
+        lead: "リード文",
         table: "テーブル",
         list: "リスト",
         image: "画像",
@@ -13102,7 +13102,7 @@ ${bodyHtml}
           if (["disc", "circle", "square", "decimal", "none"].includes(markerType)) elements.listMarker.value = markerType;
         }
         if (componentType === "lead") {
-          leadControls.preset.value = ["centered", "accent", "lines", "band", "frame", "quote", "underline", "dotted", "badgeSolid", "badgeOutline", "badgeTag", "badgeStamp", "custom"].includes(component.dataset.leadPreset)
+          leadControls.preset.value = ["centered", "accent", "lines", "band", "frame", "quote", "dotted", "badgeSolid", "badgeOutline", "badgeTag", "badgeStamp", "custom"].includes(component.dataset.leadPreset)
             ? component.dataset.leadPreset : "custom";
           leadControls.align.value = ["left", "center", "right"].includes(component.dataset.leadAlign)
             ? component.dataset.leadAlign : "center";
@@ -14050,7 +14050,7 @@ ${bodyHtml}
           while (component.firstChild) content.appendChild(component.firstChild);
           component.appendChild(content);
         }
-        const decoratedPresets = ["centered", "accent", "lines", "band", "frame", "quote", "underline", "dotted", "badgeSolid", "badgeOutline", "badgeTag", "badgeStamp"];
+        const decoratedPresets = ["centered", "accent", "lines", "band", "frame", "quote", "dotted", "badgeSolid", "badgeOutline", "badgeTag", "badgeStamp"];
         const preset = [...decoratedPresets, "custom"].includes(leadControls.preset.value)
           ? leadControls.preset.value : "custom";
         const decoration = preset === "custom"
@@ -14097,7 +14097,6 @@ ${bodyHtml}
         } else if (decoration === "lines") {
           component.style.padding = "14px 8px";
           component.style.borderTop = `2px solid ${accent}`;
-          component.style.borderBottom = `2px solid ${accent}`;
         } else if (decoration === "band") {
           component.style.padding = "16px 20px";
           component.style.border = `1px solid ${colorWithAlpha(accent, "55")}`;
@@ -14111,13 +14110,9 @@ ${bodyHtml}
           component.style.padding = "12px 18px";
           component.style.borderLeft = `5px solid ${accent}`;
           component.style.background = colorWithAlpha(accent, "0d");
-        } else if (decoration === "underline") {
-          component.style.padding = "0 4px 10px";
-          component.style.borderBottom = `5px solid ${accent}`;
         } else if (decoration === "dotted") {
           component.style.padding = "14px 8px";
           component.style.borderTop = `3px dotted ${accent}`;
-          component.style.borderBottom = `3px dotted ${accent}`;
         } else if (decoration === "badgeSolid") {
           component.style.padding = "9px 20px";
           component.style.borderRadius = "999px";
@@ -15307,7 +15302,6 @@ ${bodyHtml}
         band: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "100", marginTop: "10", marginBottom: "10" },
         frame: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "90", marginTop: "10", marginBottom: "10" },
         quote: { align: "left", placement: "center", size: "25", weight: "600", lineHeight: "1.8", maxWidth: "85", marginTop: "10", marginBottom: "10" },
-        underline: { align: "left", placement: "left", size: "27", weight: "700", lineHeight: "1.6", maxWidth: "85", marginTop: "10", marginBottom: "10" },
         dotted: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "90", marginTop: "10", marginBottom: "10" },
         badgeSolid: { align: "center", placement: "left", size: "22", weight: "700", lineHeight: "1.4", maxWidth: "90", marginTop: "10", marginBottom: "10" },
         badgeOutline: { align: "center", placement: "left", size: "22", weight: "700", lineHeight: "1.4", maxWidth: "90", marginTop: "10", marginBottom: "10" },
@@ -18999,7 +18993,18 @@ ${bodyHtml}
         if (["heading", "body"].includes(type)) return;
         component.contentEditable = ["note", "quote"].includes(type) ? "true" : "false";
         if (type === "list") component.querySelectorAll("li").forEach((item) => { item.contentEditable = "true"; });
-        if (type === "lead") component.querySelector("[data-lead-content]")?.setAttribute("contenteditable", "true");
+        if (type === "lead") {
+          component.querySelector("[data-lead-content]")?.setAttribute("contenteditable", "true");
+          const decoration = component.dataset.leadDecoration || component.dataset.leadPreset;
+          if (["lines", "dotted", "underline"].includes(decoration)) {
+            component.style.borderBottom = "0";
+          }
+          if (decoration === "underline") {
+            component.dataset.leadPreset = "custom";
+            component.dataset.leadDecoration = "centered";
+            component.style.padding = "0";
+          }
+        }
         if (type === "table") component.querySelectorAll("th,td").forEach((cell) => { cell.contentEditable = "true"; });
         if (["image", "imageText", "imagePair"].includes(type)) {
           component.querySelectorAll("figcaption,[data-image-caption]").forEach((caption) => { caption.contentEditable = "true"; });
