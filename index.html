@@ -1338,12 +1338,14 @@
     [data-inserted-component="heading"].is-document-block-active,
     [data-inserted-component="body"].is-document-block-active {
       outline: 2px solid rgba(15, 139, 141, .55);
+    }
+
+    [data-inserted-component="heading"].is-document-block-active {
       outline-offset: 3px;
     }
 
     [data-inserted-component="body"].is-document-block-active {
-      padding-left: 5px;
-      caret-color: #0f8b8d;
+      outline-offset: 6px;
     }
 
     .document-property-scope {

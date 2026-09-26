@@ -144,7 +144,7 @@ class EditorTests(unittest.TestCase):
             self.assertTrue(state['active'])
             self.assertEqual(state['editable'], 'true')
 
-    def test_active_plain_body_caret_has_editor_only_left_inset(self):
+    def test_active_plain_body_selection_outline_is_drawn_outside_content(self):
         result = self.page.evaluate("""() => {
             const plain = document.createElement('div');
             plain.dataset.insertedComponent = 'body';
@@ -154,31 +154,21 @@ class EditorTests(unittest.TestCase):
             activeInsertedComponent = plain;
             setDocumentBlockControls(plain);
             const activePadding = getComputedStyle(plain).paddingLeft;
-            const caretColor = getComputedStyle(plain).caretColor;
+            const outlineOffset = getComputedStyle(plain).outlineOffset;
             const saved = document.createElement('div');
             saved.innerHTML = getPersistablePreviewHtml();
             const restoredPlain = saved.querySelector('[data-inserted-component="body"]');
-
-            const card = document.createElement('div');
-            card.dataset.insertedComponent = 'body';
-            card.textContent = '本文カード';
-            applyDocumentBlockAppearance(card, bodySettingsForMode('card'));
-            elements.preview.replaceChildren(card);
-            activeInsertedComponent = card;
-            setDocumentBlockControls(card);
             return {
               activePadding,
-              caretColor,
+              outlineOffset,
               savedClass:restoredPlain.className,
-              savedInlinePadding:restoredPlain.style.paddingLeft,
-              cardPadding:getComputedStyle(card).paddingLeft
+              savedInlinePadding:restoredPlain.style.paddingLeft
             };
         }""")
-        self.assertEqual(result['activePadding'], '5px')
-        self.assertIn('15, 139, 141', result['caretColor'])
+        self.assertEqual(result['activePadding'], '0px')
+        self.assertEqual(result['outlineOffset'], '6px')
         self.assertEqual(result['savedClass'], '')
         self.assertEqual(result['savedInlinePadding'], '')
-        self.assertNotEqual(result['cardPadding'], '5px')
 
     def test_header_shows_automatic_last_updated_date(self):
         result = self.page.evaluate("""() => {
