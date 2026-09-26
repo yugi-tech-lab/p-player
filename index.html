@@ -3638,6 +3638,14 @@
       grid-column: 1 / -1;
     }
 
+    .component-property-dialog .list-line-break-help {
+      display: flex;
+      align-items: center;
+      align-self: end;
+      min-height: 34px;
+      padding-bottom: 2px;
+    }
+
     .component-property-dialog .type-option-table > .table-settings-top-row {
       margin: 0 0 2px;
     }
@@ -5719,6 +5727,10 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
                   <div class="markdown-import-panel" id="markdownPastePanel" hidden>
                     <label for="markdownPasteText">Markdownテキスト</label>
                     <textarea id="markdownPasteText" placeholder="ここにMarkdownを貼り付けてください"></textarea>
+                    <div class="markdown-import-file-row">
+                      <button class="secondary" id="markdownPasteSaveButton" type="button">テキスト形式で保存（.md）</button>
+                      <span class="page-note">貼り付けた内容をそのままバックアップします。</span>
+                    </div>
                   </div>
                   <div class="markdown-import-dialog-actions">
                     <button class="secondary" id="markdownImportCancelButton" type="button">キャンセル</button>
@@ -5752,6 +5764,10 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
                   <div class="markdown-import-panel" id="htmlPastePanel" hidden>
                     <label for="htmlPasteText">HTMLコード</label>
                     <textarea id="htmlPasteText" placeholder="P-Playerで出力したHTMLを貼り付けてください"></textarea>
+                    <div class="markdown-import-file-row">
+                      <button class="secondary" id="htmlPasteSaveButton" type="button">テキスト形式で保存（.html）</button>
+                      <span class="page-note">貼り付けた内容をそのままバックアップします。</span>
+                    </div>
                   </div>
                   <div class="markdown-import-dialog-actions">
                     <button class="secondary" id="htmlImportCancelButton" type="button">キャンセル</button>
@@ -5827,6 +5843,13 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
             </div>
             <div class="swatch-palette" id="selectionPalette"></div>
             <div class="marker-color-popover" id="selectionHighlightPopover" hidden>
+              <label class="marker-color-custom" for="selectionHighlightStyle">
+                <span>範囲</span>
+                <select id="selectionHighlightStyle" title="マーカーの塗り方" aria-label="マーカーの塗り方">
+                  <option value="full">文字全体</option>
+                  <option value="half">下半分</option>
+                </select>
+              </label>
               <label class="marker-color-custom" for="selectionHighlightColor">
                 <span>自由色</span>
                 <input id="selectionHighlightColor" type="color" value="#fef08a" title="マーカー色" aria-label="マーカー色">
@@ -8782,6 +8805,7 @@ ${bodyHtml}
       return {
         heading: "見出し",
         body: "本文",
+        lead: "大型リード文",
         table: "テーブル",
         list: "リスト",
         image: "画像",
@@ -9285,10 +9309,11 @@ ${bodyHtml}
             if (colorInput.classList.contains("component-property-input")) {
               const activeType = activeInsertedComponent?.dataset.insertedComponent;
               if (activeType === "list") document.querySelector("#listDesignPreset").value = "custom";
+              if (activeType === "lead") document.querySelector("#leadPreset").value = "custom";
               if (activeType === "beforeAfter") document.querySelector("#comparePreset").value = "custom";
               if (activeType === "note") document.querySelector("#notePreset").value = "custom";
               if (activeType === "quote") document.querySelector("#quotePreset").value = "custom";
-              if (["shape", "table", "list", "image", "imageText", "imagePair", "qa", "beforeAfter", "note", "quote", "toc"].includes(activeType)) {
+              if (["shape", "table", "list", "lead", "image", "imageText", "imagePair", "qa", "beforeAfter", "note", "quote", "toc"].includes(activeType)) {
                 componentProperties?._applySpecific?.();
               } else {
                 componentProperties?._apply?.();
@@ -9335,6 +9360,7 @@ ${bodyHtml}
 
       const highlightPalette = document.querySelector("#selectionHighlightPalette");
       const highlightColor = document.querySelector("#selectionHighlightColor");
+      const highlightStyle = document.querySelector("#selectionHighlightStyle");
       const highlightPreview = document.querySelector("#selectionHighlightColorPreview");
       const highlightPopover = document.querySelector("#selectionHighlightPopover");
       const highlightButton = document.querySelector("#selectionHighlightColorButton");
@@ -9355,23 +9381,27 @@ ${bodyHtml}
         highlightPopover.style.top = `${top}px`;
       };
       colors.forEach(([color, name]) => {
+        if (color === "transparent") return;
         const swatch = document.createElement("button");
         swatch.type = "button";
         swatch.className = "swatch";
-        if (color === "transparent") swatch.classList.add("is-transparent");
-        else swatch.style.background = color;
-        swatch.title = color === "transparent" ? "マーカーを解除" : name;
+        swatch.dataset.markerColor = color;
+        swatch.style.background = color;
+        swatch.title = `${name}を選択`;
         swatch.setAttribute("aria-label", swatch.title);
         swatch.addEventListener("click", () => {
-          if (color !== "transparent") {
-            highlightColor.value = color;
-            highlightPreview.style.background = color;
-          }
-          applySelectionFormat("hiliteColor", color, { forceApply: true });
+          highlightColor.value = color;
+          syncSelectionHighlightPreview();
+          highlightButton.dataset.applySelectedMarker = "true";
           closeHighlightPalette();
         });
         highlightPalette.appendChild(swatch);
       });
+      highlightStyle.addEventListener("change", () => {
+        syncSelectionHighlightPreview();
+        highlightButton.dataset.applySelectedMarker = "true";
+      });
+      syncSelectionHighlightPreview();
       highlightButton.addEventListener("click", () => {
         if (highlightPopover.hidden) positionHighlightPalette();
         else closeHighlightPalette();
@@ -9393,6 +9423,22 @@ ${bodyHtml}
       }, true);
     }
 
+    function syncSelectionHighlightPreview() {
+      const color = document.querySelector("#selectionHighlightColor")?.value || "#fef08a";
+      const half = document.querySelector("#selectionHighlightStyle")?.value === "half";
+      const preview = document.querySelector("#selectionHighlightColorPreview");
+      if (preview) {
+        preview.style.background = half
+          ? `linear-gradient(to bottom, transparent 50%, ${color} 50%)`
+          : color;
+      }
+      document.querySelectorAll("#selectionHighlightPalette [data-marker-color]").forEach((swatch) => {
+        swatch.style.background = half
+          ? `linear-gradient(to bottom, transparent 50%, ${swatch.dataset.markerColor} 50%)`
+          : swatch.dataset.markerColor;
+      });
+    }
+
     function normalizeLinkUrl(value) {
       // Browsers discard embedded tabs/newlines and leading ASCII controls in URLs.
       const url = String(value || "").replace(/[\t\r\n]/g, "").replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, "").trim();
@@ -9411,6 +9457,9 @@ ${bodyHtml}
         if (!hasVisibleContent) {
           span.remove();
           return;
+        }
+        if (span.dataset.halfHighlight === "true" && !span.style.backgroundImage) {
+          delete span.dataset.halfHighlight;
         }
         if (!span.attributes.length) span.replaceWith(...span.childNodes);
       });
@@ -9434,10 +9483,10 @@ ${bodyHtml}
 
       const component = getSelectedComponent();
       const componentType = component?.dataset?.insertedComponent;
-      if (!["heading", "body"].includes(componentType)) return selection;
+      if (!["heading", "body", "lead"].includes(componentType)) return selection;
       const target = componentType === "heading"
         ? component.querySelector("[data-heading-content]")
-        : component;
+        : componentType === "lead" ? component.querySelector("[data-lead-content]") : component;
       if (!target) return selection;
 
       const range = document.createRange();
@@ -9464,25 +9513,168 @@ ${bodyHtml}
         while ((node = walker.nextNode())) {
           if (node.textContent.trim() && range.intersectsNode(node)) textNodes.push(node);
         }
-        const isMarker = (textNode) => {
+        const fullMarkerFor = (textNode) => {
           let element = textNode.parentElement;
           while (element && elements.preview.contains(element)) {
             const inlineColor = ["SPAN", "FONT", "MARK"].includes(element.tagName)
               ? element.style.getPropertyValue("background-color")
               : "";
-            if (inlineColor && inlineColor !== "transparent" && inlineColor !== "rgba(0, 0, 0, 0)") return true;
+            if (inlineColor && inlineColor !== "transparent" && inlineColor !== "rgba(0, 0, 0, 0)") return element;
             element = element.parentElement;
           }
-          return false;
+          return null;
         };
+        const halfMarkerFor = (textNode) => {
+          const marker = textNode.parentElement?.closest?.('[data-half-highlight="true"]');
+          return marker && elements.preview.contains(marker) ? marker : null;
+        };
+        const isMarker = (textNode) => Boolean(halfMarkerFor(textNode) || fullMarkerFor(textNode));
         const removeMarker = value === "transparent"
           || (!options.forceApply && textNodes.length > 0 && textNodes.every(isMarker));
+        const markerStyle = options.markerStyle === "half" ? "half" : "full";
+        const halfMarkers = new Set(textNodes.map(halfMarkerFor).filter(Boolean));
+        const fullMarkers = new Set(textNodes.map(fullMarkerFor).filter(Boolean));
+        const allHalfMarked = textNodes.length > 0 && textNodes.every((textNode) => Boolean(halfMarkerFor(textNode)));
+        const allFullMarked = textNodes.length > 0 && textNodes.every((textNode) => Boolean(fullMarkerFor(textNode)));
+        const clearMarkerElement = (marker, unwrap = true) => {
+          if (!marker) return;
+          delete marker.dataset.halfHighlight;
+          marker.style.removeProperty("background-color");
+          marker.style.removeProperty("background-image");
+          marker.style.removeProperty("background-repeat");
+          if (!marker.getAttribute("style")?.trim()) marker.removeAttribute("style");
+          if (unwrap && !marker.attributes.length) marker.replaceWith(...marker.childNodes);
+        };
+        const finishMarkerChange = (message) => {
+          cleanupEmptyFormattingSpans();
+          capturePreviewEdits();
+          savedPreviewRange = null;
+          setStatus(message);
+        };
+        const markerIsFullySelected = (marker) => {
+          const markerRange = document.createRange();
+          markerRange.selectNodeContents(marker);
+          return range.compareBoundaryPoints(Range.START_TO_START, markerRange) <= 0
+            && range.compareBoundaryPoints(Range.END_TO_END, markerRange) >= 0;
+        };
+        const selectedMarkers = new Set([...halfMarkers, ...fullMarkers]);
+        const hasPartialMarker = Array.from(selectedMarkers).some((marker) => !markerIsFullySelected(marker));
+        if (hasPartialMarker) {
+          const markerFont = "__pl_selected_marker_part__";
+          document.execCommand("styleWithCSS", false, true);
+          document.execCommand("fontName", false, markerFont);
+          let sentinel;
+          while ((sentinel = Array.from(elements.preview.querySelectorAll("span[style]"))
+            .find((span) => span.style.fontFamily.includes(markerFont)))) {
+            sentinel.style.removeProperty("font-family");
+            if (!sentinel.getAttribute("style")?.trim()) sentinel.removeAttribute("style");
+            const sourceMarker = halfMarkerFor(sentinel.firstChild || sentinel) || fullMarkerFor(sentinel.firstChild || sentinel);
+            let target = sentinel;
+            if (sourceMarker && sourceMarker !== sentinel) {
+              const beforeRange = document.createRange();
+              beforeRange.selectNodeContents(sourceMarker);
+              beforeRange.setEndBefore(sentinel);
+              const afterRange = document.createRange();
+              afterRange.selectNodeContents(sourceMarker);
+              afterRange.setStartAfter(sentinel);
+              const beforeContent = beforeRange.cloneContents();
+              const afterContent = afterRange.cloneContents();
+              const makeMarkerClone = (content) => {
+                if (!content.textContent && !content.querySelector?.("br,img,video,audio")) return null;
+                const clone = sourceMarker.cloneNode(false);
+                clone.append(content);
+                return clone;
+              };
+              const before = makeMarkerClone(beforeContent);
+              const after = makeMarkerClone(afterContent);
+              target = sourceMarker.cloneNode(false);
+              let selectedBranch = sentinel.cloneNode(true);
+              let ancestor = sentinel.parentElement;
+              while (ancestor && ancestor !== sourceMarker) {
+                const ancestorClone = ancestor.cloneNode(false);
+                ancestorClone.append(selectedBranch);
+                selectedBranch = ancestorClone;
+                ancestor = ancestor.parentElement;
+              }
+              target.append(selectedBranch);
+              sourceMarker.replaceWith(...[before, target, after].filter(Boolean));
+            }
+            clearMarkerElement(target, removeMarker);
+            const selectedTarget = target;
+            if (!removeMarker && markerStyle === "half") {
+              selectedTarget.dataset.halfHighlight = "true";
+              selectedTarget.style.backgroundColor = "transparent";
+              selectedTarget.style.backgroundImage = `linear-gradient(to bottom, transparent 50%, ${value} 50%)`;
+              selectedTarget.style.backgroundRepeat = "no-repeat";
+            } else if (!removeMarker) {
+              selectedTarget.style.backgroundColor = value;
+            }
+          }
+          finishMarkerChange(removeMarker
+            ? "選択範囲のマーカーを解除しました"
+            : markerStyle === "half" ? "選択範囲に下半分マーカーを設定しました" : "選択範囲にマーカーを設定しました");
+          return;
+        }
+        if (markerStyle === "half") {
+          if (removeMarker) {
+            halfMarkers.forEach(clearMarkerElement);
+            fullMarkers.forEach(clearMarkerElement);
+            if (!halfMarkers.size && !fullMarkers.size && value === "transparent") {
+              document.execCommand("styleWithCSS", false, true);
+              document.execCommand("hiliteColor", false, "transparent");
+            }
+          } else if (options.forceApply && allHalfMarked) {
+            halfMarkers.forEach((marker) => {
+              marker.style.backgroundImage = `linear-gradient(to bottom, transparent 50%, ${value} 50%)`;
+            });
+          } else if (options.forceApply && allFullMarked) {
+            fullMarkers.forEach((marker) => {
+              marker.style.backgroundColor = "transparent";
+              marker.dataset.halfHighlight = "true";
+              marker.style.backgroundImage = `linear-gradient(to bottom, transparent 50%, ${value} 50%)`;
+              marker.style.backgroundRepeat = "no-repeat";
+            });
+          } else {
+            const markerFont = "__pl_half_highlight_marker__";
+            document.execCommand("styleWithCSS", false, true);
+            document.execCommand("fontName", false, markerFont);
+            Array.from(elements.preview.querySelectorAll("span[style]"))
+              .filter((span) => span.style.fontFamily.includes(markerFont))
+              .forEach((span) => {
+                span.style.removeProperty("font-family");
+                span.dataset.halfHighlight = "true";
+                span.style.backgroundColor = "transparent";
+                span.style.backgroundImage = `linear-gradient(to bottom, transparent 50%, ${value} 50%)`;
+                span.style.backgroundRepeat = "no-repeat";
+              });
+          }
+          finishMarkerChange(removeMarker ? "マーカーを解除しました" : "下半分マーカーを設定しました");
+          return;
+        }
+        if (removeMarker && (halfMarkers.size || fullMarkers.size)) {
+          halfMarkers.forEach(clearMarkerElement);
+          fullMarkers.forEach(clearMarkerElement);
+          finishMarkerChange("マーカーを解除しました");
+          return;
+        }
+        if (options.forceApply && allFullMarked) {
+          fullMarkers.forEach((marker) => { marker.style.backgroundColor = value; });
+          finishMarkerChange("マーカーを設定しました");
+          return;
+        }
+        if (options.forceApply && allHalfMarked) {
+          halfMarkers.forEach((marker) => {
+            delete marker.dataset.halfHighlight;
+            marker.style.removeProperty("background-image");
+            marker.style.removeProperty("background-repeat");
+            marker.style.backgroundColor = value;
+          });
+          finishMarkerChange("マーカーを設定しました");
+          return;
+        }
         document.execCommand("styleWithCSS", false, true);
         document.execCommand("hiliteColor", false, removeMarker ? "transparent" : value);
-        cleanupEmptyFormattingSpans();
-        capturePreviewEdits();
-        savedPreviewRange = null;
-        setStatus(removeMarker ? "マーカーを解除しました" : "マーカーを設定しました");
+        finishMarkerChange(removeMarker ? "マーカーを解除しました" : "マーカーを設定しました");
         return;
       }
 
@@ -9580,18 +9772,18 @@ ${bodyHtml}
         return;
       }
       const selectedRange = selection.getRangeAt(0);
-      const selectedInlineCodes = Array.from(
-        elements.preview.querySelectorAll("[data-inline-code]")
-      ).filter((inlineCode) => {
+      const selectedSpecialFormatting = Array.from(
+        elements.preview.querySelectorAll('[data-inline-code], [data-half-highlight="true"]')
+      ).filter((element) => {
         try {
-          return selectedRange.intersectsNode(inlineCode);
+          return selectedRange.intersectsNode(element);
         } catch {
           return false;
         }
       });
       let startMarker = null;
       let endMarker = null;
-      if (selectedInlineCodes.length) {
+      if (selectedSpecialFormatting.length) {
         startMarker = document.createComment("p-player reset start");
         endMarker = document.createComment("p-player reset end");
         const endRange = selectedRange.cloneRange();
@@ -9600,9 +9792,9 @@ ${bodyHtml}
         const startRange = selectedRange.cloneRange();
         startRange.collapse(true);
         startRange.insertNode(startMarker);
-        selectedInlineCodes.forEach((inlineCode) => {
-          if (inlineCode.isConnected && elements.preview.contains(inlineCode)) {
-            inlineCode.replaceWith(...inlineCode.childNodes);
+        selectedSpecialFormatting.reverse().forEach((element) => {
+          if (element.isConnected && elements.preview.contains(element)) {
+            element.replaceWith(...element.childNodes);
           }
         });
         const restoredRange = document.createRange();
@@ -10016,6 +10208,7 @@ ${bodyHtml}
         insertSelect.id = "componentInsertSelect";
         insertSelect.title = "プレビューへパーツを挿入";
         insertSelect.innerHTML = `<option value="">パーツを挿入</option>
+          <option value="lead">大型リード文</option>
           <option value="list">リスト</option>
           <option value="note">メモ</option>
           <option value="quote">引用</option>
@@ -10041,6 +10234,7 @@ ${bodyHtml}
         const quickButtons = document.createElement("span");
         quickButtons.className = "component-quick-buttons";
         [
+          ["lead", "Aa", "大型リード文"],
           ["list", "📋", "リスト"],
           ["note", "📝", "メモ"],
           ["quote", "💬", "引用"],
@@ -11728,6 +11922,11 @@ ${bodyHtml}
       imagePairCaption3ToggleField.innerHTML = `<label class="check-item"><input id="componentImageCaption3" type="checkbox">3枚目の下部テキストを表示</label>`;
       imagePairCaptionToggleField.after(imagePairCaption3ToggleField);
       const componentImageCaption3 = imagePairCaption3ToggleField.querySelector("#componentImageCaption3");
+      const imagePairCaption4ToggleField = document.createElement("div");
+      imagePairCaption4ToggleField.className = "field image-caption-toggle image-pair-caption-toggle";
+      imagePairCaption4ToggleField.innerHTML = `<label class="check-item"><input id="componentImageCaption4" type="checkbox">4枚目の下部テキストを表示</label>`;
+      imagePairCaption3ToggleField.after(imagePairCaption4ToggleField);
+      const componentImageCaption4 = imagePairCaption4ToggleField.querySelector("#componentImageCaption4");
       const tableCaptionToggleField = document.createElement("div");
       tableCaptionToggleField.className = "field table-caption-toggle";
       tableCaptionToggleField.innerHTML = `<label class="check-item"><input id="componentTableCaption" type="checkbox">キャプションを表示</label>`;
@@ -11740,7 +11939,7 @@ ${bodyHtml}
       const componentImageLinkUrl2 = imagePairLinkField.querySelector("#componentImageLinkUrl2");
       const imagePairCountField = document.createElement("div");
       imagePairCountField.className = "field image-pair-count-field";
-      imagePairCountField.innerHTML = `<label for="componentImagePairCount">画像枚数</label><select id="componentImagePairCount"><option value="1">1枚</option><option value="2">2枚</option><option value="3">3枚</option></select>`;
+      imagePairCountField.innerHTML = `<label for="componentImagePairCount">画像枚数</label><select id="componentImagePairCount"><option value="1">1枚</option><option value="2">2枚</option><option value="3">3枚</option><option value="4">4枚</option></select>`;
       elements.imageAutoHeight?.closest(".field")?.after(imagePairCountField);
       imagePairCountField.after(imageCaptionToggleField);
       const componentImagePairCount = imagePairCountField.querySelector("#componentImagePairCount");
@@ -11754,6 +11953,16 @@ ${bodyHtml}
       imagePairLink3Field.innerHTML = `<label for="componentImageLinkUrl3">3枚目のリンクURL</label><input id="componentImageLinkUrl3" type="url" placeholder="https://example.com">`;
       imagePairPath3Field.after(imagePairLink3Field);
       const componentImageLinkUrl3 = imagePairLink3Field.querySelector("#componentImageLinkUrl3");
+      const imagePairPath4Field = document.createElement("div");
+      imagePairPath4Field.className = "field image-pair-fourth-field";
+      imagePairPath4Field.innerHTML = `<label for="componentImagePath4">4枚目の画像URL</label><input id="componentImagePath4" type="text" value="">`;
+      imagePairLink3Field.after(imagePairPath4Field);
+      const componentImagePath4 = imagePairPath4Field.querySelector("#componentImagePath4");
+      const imagePairLink4Field = document.createElement("div");
+      imagePairLink4Field.className = "field image-pair-fourth-field";
+      imagePairLink4Field.innerHTML = `<label for="componentImageLinkUrl4">4枚目のリンクURL</label><input id="componentImageLinkUrl4" type="url" placeholder="https://example.com">`;
+      imagePairPath4Field.after(imagePairLink4Field);
+      const componentImageLinkUrl4 = imagePairLink4Field.querySelector("#componentImageLinkUrl4");
       const primaryImageLinkLabel = elements.imageLinkUrl?.closest(".field")?.querySelector("label");
       const createComponentPropertyGroup = (title, nodes, className = "") => {
         const group = document.createElement("section");
@@ -11810,7 +12019,12 @@ ${bodyHtml}
         imagePairLink3Field,
         imagePairCaption3ToggleField
       ], "component-property-columns-2 component-image-third-group");
-      legacyPropertyBlocks[2]?.after(imagePrimaryGroup, imageSecondaryGroup, imageThirdGroup);
+      const imageFourthGroup = createComponentPropertyGroup("4枚目", [
+        imagePairPath4Field,
+        imagePairLink4Field,
+        imagePairCaption4ToggleField
+      ], "component-property-columns-2 component-image-fourth-group");
+      legacyPropertyBlocks[2]?.after(imagePrimaryGroup, imageSecondaryGroup, imageThirdGroup, imageFourthGroup);
 
       const qaPropertyBlock = document.createElement("div");
       qaPropertyBlock.className = "field qa-component-settings";
@@ -11888,6 +12102,9 @@ ${bodyHtml}
           <div class="row">
             <div class="field"><label for="listMarkerSize">記号サイズ</label><div class="unit-input"><input id="listMarkerSize" type="number" min="8" max="48" value="16"><span>px</span></div></div>
             <div class="field"><label for="listStartNumber">開始番号</label><input id="listStartNumber" type="number" min="0" max="999" value="1"></div>
+            <div class="field"><label class="check-item"><input id="listNumberBadge" type="checkbox">番号をバッジ表示</label></div>
+            <div class="field"><label for="listNumberBadgeStyle">番号デザイン</label><select id="listNumberBadgeStyle"><option value="solidCircle">塗りつぶし丸</option><option value="outlineCircle">枠線丸</option><option value="roundedSquare" selected>角丸四角</option><option value="label">POINTラベル</option></select></div>
+            <div class="field list-line-break-help"><small class="help-text">Shift + Enterでグループ内で改行できます</small></div>
           </div>
         </div>
         <div class="list-settings-group">
@@ -11938,6 +12155,8 @@ ${bodyHtml}
         markerColorText: listPropertyBlock.querySelector("#listMarkerColorText"),
         markerSize: listPropertyBlock.querySelector("#listMarkerSize"),
         startNumber: listPropertyBlock.querySelector("#listStartNumber"),
+        numberBadge: listPropertyBlock.querySelector("#listNumberBadge"),
+        numberBadgeStyle: listPropertyBlock.querySelector("#listNumberBadgeStyle"),
         indent: listPropertyBlock.querySelector("#listIndent"),
         markerGap: listPropertyBlock.querySelector("#listMarkerGap"),
         itemGap: listPropertyBlock.querySelector("#listItemGap"),
@@ -11959,6 +12178,50 @@ ${bodyHtml}
         remove: listPropertyBlock.querySelector("#listDeleteItem"),
         up: listPropertyBlock.querySelector("#listMoveItemUp"),
         down: listPropertyBlock.querySelector("#listMoveItemDown")
+      };
+      const leadPropertyBlock = document.createElement("div");
+      leadPropertyBlock.className = "field list-component-settings lead-component-settings";
+      leadPropertyBlock.innerHTML = `<label>大型リード文</label>
+        <div class="list-settings-group"><strong>デザイン</strong>
+          <div class="row">
+            <div class="field"><label for="leadPreset">スタイル</label><select id="leadPreset"><option value="centered">中央キャッチ</option><option value="accent">左アクセント</option><option value="lines">上下ライン</option><option value="band">カラーバンド</option><option value="frame">囲みフレーム</option><option value="quote">引用風</option><option value="underline">下線アクセント</option><option value="dotted">ドットライン</option><option value="badgeSolid">塗りバッジ</option><option value="badgeOutline">枠線バッジ</option><option value="badgeTag">タグバッジ</option><option value="badgeStamp">スタンプバッジ</option><option value="custom">カスタム</option></select></div>
+            <div class="field"><label for="leadAlign">文字揃え</label><select id="leadAlign"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div>
+            <div class="field"><label for="leadPlacement">パーツ配置</label><select id="leadPlacement"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div>
+          </div>
+        </div>
+        <div class="list-settings-group"><strong>文字</strong>
+          <div class="row">
+            <div class="field"><label for="leadSize">文字サイズ</label><div class="unit-input"><input id="leadSize" type="number" min="16" max="56" value="28"><span>px</span></div></div>
+            <div class="field"><label for="leadWeight">文字の太さ</label><select id="leadWeight"><option value="400">標準</option><option value="600">やや太字</option><option value="700" selected>太字</option><option value="800">極太</option></select></div>
+            <div class="field"><label for="leadLineHeight">行間</label><input id="leadLineHeight" type="number" min="1" max="2.5" step="0.1" value="1.6"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label for="leadColor">文字色</label><div class="color-row"><input id="leadColor" type="color" value="#172033"><input id="leadColorText" type="text" value="#172033"></div></div>
+            <div class="field"><label for="leadAccent">アクセント色</label><div class="color-row"><input id="leadAccent" type="color" value="#0f8b8d"><input id="leadAccentText" type="text" value="#0f8b8d"></div></div>
+          </div>
+        </div>
+        <div class="list-settings-group"><strong>幅・余白</strong>
+          <div class="row">
+            <div class="field"><label for="leadMaxWidth">最大横幅</label><div class="unit-input"><input id="leadMaxWidth" type="number" min="30" max="100" value="85"><span>%</span></div></div>
+            <div class="field"><label for="leadMarginTop">上余白</label><div class="unit-input"><input id="leadMarginTop" type="number" min="0" max="120" value="28"><span>px</span></div></div>
+            <div class="field"><label for="leadMarginBottom">下余白</label><div class="unit-input"><input id="leadMarginBottom" type="number" min="0" max="120" value="28"><span>px</span></div></div>
+          </div>
+        </div>`;
+      listPropertyBlock.after(leadPropertyBlock);
+      const leadControls = {
+        preset: leadPropertyBlock.querySelector("#leadPreset"),
+        align: leadPropertyBlock.querySelector("#leadAlign"),
+        placement: leadPropertyBlock.querySelector("#leadPlacement"),
+        size: leadPropertyBlock.querySelector("#leadSize"),
+        weight: leadPropertyBlock.querySelector("#leadWeight"),
+        lineHeight: leadPropertyBlock.querySelector("#leadLineHeight"),
+        color: leadPropertyBlock.querySelector("#leadColor"),
+        colorText: leadPropertyBlock.querySelector("#leadColorText"),
+        accent: leadPropertyBlock.querySelector("#leadAccent"),
+        accentText: leadPropertyBlock.querySelector("#leadAccentText"),
+        maxWidth: leadPropertyBlock.querySelector("#leadMaxWidth"),
+        marginTop: leadPropertyBlock.querySelector("#leadMarginTop"),
+        marginBottom: leadPropertyBlock.querySelector("#leadMarginBottom")
       };
       const comparePropertyBlock = document.createElement("div");
       comparePropertyBlock.className = "field list-component-settings before-after-component-settings";
@@ -12508,6 +12771,7 @@ ${bodyHtml}
         return appliedCount;
       };
       const componentTypeNames = {
+        lead: "大型リード文",
         table: "テーブル",
         list: "リスト",
         image: "画像",
@@ -12623,10 +12887,11 @@ ${bodyHtml}
             block.classList.add("is-hidden");
             block.style.setProperty("display", "none", "important");
           });
-          [speechToggleField, imageCaptionToggleField, imagePairCaptionToggleField, imagePairCaption3ToggleField,
+          [speechToggleField, imageCaptionToggleField, imagePairCaptionToggleField, imagePairCaption3ToggleField, imagePairCaption4ToggleField,
             tableCaptionToggleField, imagePairCountField, imagePairLinkField, imagePairPath3Field,
-            imagePairLink3Field, imagePrimaryGroup, imageSecondaryGroup, imageThirdGroup,
-            qaPropertyBlock, listPropertyBlock, comparePropertyBlock,
+            imagePairLink3Field, imagePairPath4Field, imagePairLink4Field,
+            imagePrimaryGroup, imageSecondaryGroup, imageThirdGroup, imageFourthGroup,
+            qaPropertyBlock, listPropertyBlock, leadPropertyBlock, comparePropertyBlock,
             notePropertyBlock, quotePropertyBlock, codePropertyBlock,
             xpostPropertyBlock, videoPropertyBlock, documentPropertyBlock, accordionPropertyBlock,
             linkCardPropertyBlock, tocPropertyBlock, shapePropertyBlock].forEach((block) => {
@@ -12666,7 +12931,7 @@ ${bodyHtml}
         propertyConvertImageButton.textContent = componentType === "image"
           ? "左右画像＋テキストへ変換"
           : "通常画像へ変換";
-        const hasDedicatedSettings = ["shape", "table", "list", "image", "imageText", "imagePair", "qa", "beforeAfter", "note", "quote", "code", "xpost", "video", "document", "toc", "accordion", "linkCard"].includes(componentType);
+        const hasDedicatedSettings = ["lead", "shape", "table", "list", "image", "imageText", "imagePair", "qa", "beforeAfter", "note", "quote", "code", "xpost", "video", "document", "toc", "accordion", "linkCard"].includes(componentType);
         const isImageText = componentType === "imageText";
         const supportsImageCaption = ["image", "imageText", "imagePair"].includes(componentType);
         const bubbleEnabled = isImageText && component.dataset.speechBubble === "true";
@@ -12682,6 +12947,8 @@ ${bodyHtml}
         componentImageCaption2.checked = Boolean(component.children[1]?.querySelector("[data-image-caption]"));
         componentImageCaption3.checked = Boolean(component.children[2]?.querySelector("[data-image-caption]"))
           || (!component.children[2] && component.dataset.imageCaption3 === "true");
+        componentImageCaption4.checked = Boolean(component.children[3]?.querySelector("[data-image-caption]"))
+          || (!component.children[3] && component.dataset.imageCaption4 === "true");
         if (primaryImageLinkLabel) {
           primaryImageLinkLabel.textContent = isImageGallery
             ? "1枚目のリンクURL" : "画像クリック時のリンクURL";
@@ -12716,16 +12983,21 @@ ${bodyHtml}
         showBlock(imageCaptionToggleField, supportsImageCaption);
         showBlock(imagePairCaptionToggleField, componentType === "imagePair");
         showBlock(imagePairCaption3ToggleField, componentType === "imagePair" && component.children.length >= 3);
+        showBlock(imagePairCaption4ToggleField, componentType === "imagePair" && component.children.length >= 4);
         showBlock(tableCaptionToggleField, componentType === "table");
         showBlock(imagePairCountField, ["image", "imagePair"].includes(componentType));
         showBlock(imagePrimaryGroup, usesImageUrl);
         showBlock(imageSecondaryGroup, componentType === "imagePair");
         showBlock(imageThirdGroup, componentType === "imagePair" && component.children.length >= 3);
+        showBlock(imageFourthGroup, componentType === "imagePair" && component.children.length >= 4);
         showBlock(imagePairLinkField, componentType === "imagePair");
         showBlock(imagePairPath3Field, componentType === "imagePair" && component.children.length >= 3);
         showBlock(imagePairLink3Field, componentType === "imagePair" && component.children.length >= 3);
+        showBlock(imagePairPath4Field, componentType === "imagePair" && component.children.length >= 4);
+        showBlock(imagePairLink4Field, componentType === "imagePair" && component.children.length >= 4);
         showBlock(qaPropertyBlock, componentType === "qa");
         showBlock(listPropertyBlock, componentType === "list");
+        showBlock(leadPropertyBlock, componentType === "lead");
         showBlock(comparePropertyBlock, componentType === "beforeAfter");
         showBlock(notePropertyBlock, componentType === "note");
         showBlock(quotePropertyBlock, componentType === "quote");
@@ -12779,10 +13051,12 @@ ${bodyHtml}
             || component.dataset.imagePath2 || "";
           componentImagePairCount.value = componentType === "image"
             ? "1"
-            : componentImages.length >= 3 ? "3" : "2";
+            : componentImages.length >= 4 ? "4" : componentImages.length >= 3 ? "3" : "2";
           if (componentType === "imagePair") {
             componentImagePath3.value = componentImages[2]?.dataset.securitySrc || componentImages[2]?.getAttribute("src")
               || component.dataset.imagePath3 || "";
+            componentImagePath4.value = componentImages[3]?.dataset.securitySrc || componentImages[3]?.getAttribute("src")
+              || component.dataset.imagePath4 || "";
           }
         }
         const setColorControl = (colorInput, textInput, value) => {
@@ -12798,6 +13072,11 @@ ${bodyHtml}
           setColorControl(listControls.markerColor, listControls.markerColorText, component.dataset.listMarkerColor || component.querySelector("[data-list-marker-part]")?.style.color || "#2563eb");
           listControls.markerSize.value = component.dataset.listMarkerSize || String(parseInt(component.querySelector("[data-list-marker-part]")?.style.fontSize, 10) || 16);
           listControls.startNumber.value = component.dataset.listStartNumber || component.getAttribute("start") || "1";
+          listControls.numberBadge.checked = component.dataset.listNumberBadge === "true"
+            || (!component.hasAttribute("data-list-number-badge") && component.dataset.listPreset === "cards");
+          listControls.numberBadgeStyle.value = ["solidCircle", "outlineCircle", "roundedSquare", "label"].includes(component.dataset.listNumberBadgeStyle)
+            ? component.dataset.listNumberBadgeStyle : "roundedSquare";
+          listControls.numberBadgeStyle.disabled = !listControls.numberBadge.checked;
           listControls.indent.value = component.dataset.listIndent || String(parseInt(component.style.marginLeft, 10) || 0);
           listControls.markerGap.value = component.dataset.listMarkerGap || String(parseInt(component.querySelector("[data-list-marker-part]")?.style.marginRight, 10) || 10);
           listControls.itemGap.value = component.dataset.listItemGap || "8";
@@ -12814,6 +13093,23 @@ ${bodyHtml}
           listControls.radius.value = component.dataset.listRadius || "0";
           listControls.padding.value = component.dataset.listPadding || "0";
           if (["disc", "circle", "square", "decimal", "none"].includes(markerType)) elements.listMarker.value = markerType;
+        }
+        if (componentType === "lead") {
+          leadControls.preset.value = ["centered", "accent", "lines", "band", "frame", "quote", "underline", "dotted", "badgeSolid", "badgeOutline", "badgeTag", "badgeStamp", "custom"].includes(component.dataset.leadPreset)
+            ? component.dataset.leadPreset : "custom";
+          leadControls.align.value = ["left", "center", "right"].includes(component.dataset.leadAlign)
+            ? component.dataset.leadAlign : "center";
+          leadControls.placement.value = ["left", "center", "right"].includes(component.dataset.leadPlacement)
+            ? component.dataset.leadPlacement : "center";
+          leadControls.size.value = component.dataset.leadSize || "28";
+          leadControls.weight.value = ["400", "600", "700", "800"].includes(component.dataset.leadWeight)
+            ? component.dataset.leadWeight : "700";
+          leadControls.lineHeight.value = component.dataset.leadLineHeight || "1.6";
+          setColorControl(leadControls.color, leadControls.colorText, component.dataset.leadColor || "#172033");
+          setColorControl(leadControls.accent, leadControls.accentText, component.dataset.leadAccent || "#0f8b8d");
+          leadControls.maxWidth.value = component.dataset.leadMaxWidth || String(parseFloat(component.style.width) || 85);
+          leadControls.marginTop.value = component.dataset.leadMarginTop || String(parseInt(component.style.marginTop, 10) || 0);
+          leadControls.marginBottom.value = component.dataset.leadMarginBottom || String(parseInt(component.style.marginBottom, 10) || 0);
         }
         if (componentType === "beforeAfter") {
           const cards = Array.from(component.children).filter((child) => !child.hasAttribute("data-compare-arrow")).slice(0, 3);
@@ -13091,6 +13387,9 @@ ${bodyHtml}
           componentImageLinkUrl3.value = imageNodes[2]?.parentElement?.tagName === "A"
             ? imageNodes[2].parentElement.getAttribute("href") || ""
             : component.dataset.imageLinkUrl3 || "";
+          componentImageLinkUrl4.value = imageNodes[3]?.parentElement?.tagName === "A"
+            ? imageNodes[3].parentElement.getAttribute("href") || ""
+            : component.dataset.imageLinkUrl4 || "";
           if (imageNode) {
             elements.imageHeight.value = autoHeight
               ? component.dataset.imageFixedHeight || "240"
@@ -13185,7 +13484,7 @@ ${bodyHtml}
         }
       };
       const rememberImageHost = (component, host, index) => {
-        if (!component || !host || index < 1 || index > 2) return;
+        if (!component || !host || index < 1 || index > 3) return;
         const suffix = String(index + 1);
         const image = host.querySelector("img[data-inserted-image]");
         const link = image?.parentElement?.tagName === "A" ? image.parentElement : null;
@@ -13196,10 +13495,12 @@ ${bodyHtml}
         if (caption) component.dataset[`imageCaptionText${suffix}`] = caption.innerHTML;
       };
       const restoreImageHost = (component, host, index) => {
-        if (!component || !host || index < 1 || index > 2) return;
+        if (!component || !host || index < 1 || index > 3) return;
         const suffix = String(index + 1);
-        const fallbackPath = index === 1 ? elements.imagePath2.value : componentImagePath3.value;
-        const fallbackLink = index === 1 ? componentImageLinkUrl2.value : componentImageLinkUrl3.value;
+        const fallbackPaths = ["", elements.imagePath2.value, componentImagePath3.value, componentImagePath4.value];
+        const fallbackLinks = ["", componentImageLinkUrl2.value, componentImageLinkUrl3.value, componentImageLinkUrl4.value];
+        const fallbackPath = fallbackPaths[index];
+        const fallbackLink = fallbackLinks[index];
         const image = host.querySelector("img[data-inserted-image]");
         const source = getImageSource(component.dataset[`imagePath${suffix}`] || fallbackPath || "")
           || sampleImageSrc;
@@ -13246,7 +13547,7 @@ ${bodyHtml}
           replacement.dataset[key] = value;
         });
         if (sourceType === "imagePair") {
-          Array.from(component.children).slice(1, 3).forEach((host, index) => {
+          Array.from(component.children).slice(1, 4).forEach((host, index) => {
             rememberImageHost(replacement, host, index + 1);
           });
         }
@@ -13304,7 +13605,7 @@ ${bodyHtml}
       };
       const ensureImagePairCount = (component) => {
         if (component?.dataset.insertedComponent !== "imagePair") return;
-        const desiredCount = componentImagePairCount.value === "3" ? 3 : 2;
+        const desiredCount = Math.max(2, Math.min(4, Number(componentImagePairCount.value) || 2));
         let hosts = Array.from(component.children);
         while (hosts.length > desiredCount) {
           const host = hosts.pop();
@@ -13329,7 +13630,7 @@ ${bodyHtml}
       };
       const applyImageSources = (component) => {
         if (!["image", "imageText", "imagePair"].includes(component?.dataset.insertedComponent)) return;
-        const values = [elements.imagePath.value, elements.imagePath2.value, componentImagePath3.value];
+        const values = [elements.imagePath.value, elements.imagePath2.value, componentImagePath3.value, componentImagePath4.value];
         Array.from(component.querySelectorAll("img[data-inserted-image]")).forEach((image, index) => {
           const source = getImageSource(values[index] || "");
           if (source) setArticleResource(image, source);
@@ -13337,14 +13638,15 @@ ${bodyHtml}
         if (component.dataset.insertedComponent === "imagePair") {
           component.dataset.imagePath2 = values[1] || component.dataset.imagePath2 || "";
           component.dataset.imagePath3 = values[2] || component.dataset.imagePath3 || "";
+          component.dataset.imagePath4 = values[3] || component.dataset.imagePath4 || "";
         }
       };
       const applyImageCaption = (component) => {
         const type = component?.dataset.insertedComponent;
         if (!["image", "imageText", "imagePair"].includes(type)) return;
         if (type === "imagePair") {
-          const toggles = [componentImageCaption, componentImageCaption2, componentImageCaption3];
-          Array.from(component.children).slice(0, 3).forEach((host, index) => {
+          const toggles = [componentImageCaption, componentImageCaption2, componentImageCaption3, componentImageCaption4];
+          Array.from(component.children).slice(0, 4).forEach((host, index) => {
             host.contentEditable = "false";
             let caption = host.querySelector("[data-image-caption]");
             const textKey = `imageCaptionText${index ? index + 1 : ""}`;
@@ -13370,6 +13672,7 @@ ${bodyHtml}
           component.dataset.imageCaption = String(componentImageCaption.checked);
           component.dataset.imageCaption2 = String(componentImageCaption2.checked);
           component.dataset.imageCaption3 = String(componentImageCaption3.checked);
+          component.dataset.imageCaption4 = String(componentImageCaption4.checked);
           return;
         }
         const host = type === "image" ? component : component.firstElementChild;
@@ -13449,11 +13752,15 @@ ${bodyHtml}
         const thirdLinkUrl = type === "imagePair"
           ? normalizeImageLink(componentImageLinkUrl3.value)
           : type === "image" ? normalizeImageLink(component.dataset.imageLinkUrl3 || "") : firstLinkUrl;
+        const fourthLinkUrl = type === "imagePair"
+          ? normalizeImageLink(componentImageLinkUrl4.value)
+          : type === "image" ? normalizeImageLink(component.dataset.imageLinkUrl4 || "") : firstLinkUrl;
         elements.imageLinkUrl.value = firstLinkUrl;
         componentImageLinkUrl2.value = secondLinkUrl;
         componentImageLinkUrl3.value = thirdLinkUrl;
+        componentImageLinkUrl4.value = fourthLinkUrl;
         component.querySelectorAll("img[data-inserted-image]").forEach((image, index) => {
-          const linkUrl = [firstLinkUrl, secondLinkUrl, thirdLinkUrl][index] || "";
+          const linkUrl = [firstLinkUrl, secondLinkUrl, thirdLinkUrl, fourthLinkUrl][index] || "";
           const currentLink = image.parentElement?.tagName === "A" ? image.parentElement : null;
           if (linkUrl) {
             const link = currentLink || document.createElement("a");
@@ -13473,6 +13780,7 @@ ${bodyHtml}
         component.dataset.imageLinkUrl = firstLinkUrl;
         component.dataset.imageLinkUrl2 = secondLinkUrl;
         component.dataset.imageLinkUrl3 = thirdLinkUrl;
+        component.dataset.imageLinkUrl4 = fourthLinkUrl;
       };
       const copyComponentDataset = (source, target) => {
         Object.entries(source?.dataset || {}).forEach(([key, value]) => {
@@ -13646,6 +13954,9 @@ ${bodyHtml}
         component.dataset.listMarkerColor = markerColor;
         component.dataset.listMarkerSize = String(markerSize);
         component.dataset.listStartNumber = listControls.startNumber.value;
+        component.dataset.listNumberBadge = String(listControls.numberBadge.checked);
+        component.dataset.listNumberBadgeStyle = listControls.numberBadgeStyle.value;
+        listControls.numberBadgeStyle.disabled = !listControls.numberBadge.checked;
         component.dataset.listIndent = String(indent);
         component.dataset.listMarkerGap = String(markerGap);
         component.dataset.listItemGap = String(itemGap);
@@ -13674,6 +13985,34 @@ ${bodyHtml}
           marker.style.lineHeight = String(lineHeight);
           marker.style.textAlign = markerType === "decimal" || markerType.includes("alpha") ? "right" : "center";
           marker.style.cursor = markerType === "check" ? "pointer" : "default";
+          if (listControls.numberBadge.checked) {
+            const badgeNumber = Math.max(0, Number(listControls.startNumber.value) || 1) + index;
+            const badgeStyle = listControls.numberBadgeStyle.value;
+            marker.textContent = badgeStyle === "label" ? `POINT ${badgeNumber}` : String(badgeNumber);
+            marker.style.display = "inline-flex";
+            marker.style.alignItems = "center";
+            marker.style.justifyContent = "center";
+            marker.style.boxSizing = "border-box";
+            marker.style.minWidth = badgeStyle === "label" ? "auto" : `${markerSize * 2}px`;
+            marker.style.height = `${markerSize * 2}px`;
+            marker.style.marginTop = "1px";
+            marker.style.padding = badgeStyle === "label" ? `0 ${Math.max(8, markerSize * 0.65)}px` : "0";
+            marker.style.backgroundColor = badgeStyle === "outlineCircle" ? "transparent" : markerColor;
+            marker.style.color = badgeStyle === "outlineCircle" ? markerColor : "#ffffff";
+            marker.style.border = badgeStyle === "outlineCircle" ? `2px solid ${markerColor}` : "0";
+            marker.style.borderRadius = badgeStyle === "roundedSquare"
+              ? `${Math.max(4, Math.round(markerSize * 0.4))}px` : "999px";
+            marker.style.lineHeight = "1";
+            marker.style.textAlign = "center";
+          } else {
+            marker.style.display = "block";
+            marker.style.height = "auto";
+            marker.style.marginTop = "0";
+            marker.style.padding = "0";
+            marker.style.backgroundColor = "transparent";
+            marker.style.border = "0";
+            marker.style.borderRadius = "0";
+          }
           item.style.display = "flex";
           item.style.alignItems = listControls.verticalAlign.value;
           item.style.boxSizing = "border-box";
@@ -13693,6 +14032,125 @@ ${bodyHtml}
           item.style.borderRadius = `${itemRadius}px`;
           item.style.lineHeight = String(lineHeight);
         });
+      };
+      const applyLeadSettings = (component) => {
+        if (!component || component.dataset.insertedComponent !== "lead") return;
+        let content = component.querySelector(":scope > [data-lead-content]");
+        if (!content) {
+          content = document.createElement("div");
+          content.dataset.leadContent = "true";
+          content.contentEditable = "true";
+          while (component.firstChild) content.appendChild(component.firstChild);
+          component.appendChild(content);
+        }
+        const decoratedPresets = ["centered", "accent", "lines", "band", "frame", "quote", "underline", "dotted", "badgeSolid", "badgeOutline", "badgeTag", "badgeStamp"];
+        const preset = [...decoratedPresets, "custom"].includes(leadControls.preset.value)
+          ? leadControls.preset.value : "custom";
+        const decoration = preset === "custom"
+          ? (decoratedPresets.includes(component.dataset.leadDecoration)
+            ? component.dataset.leadDecoration
+            : (decoratedPresets.includes(component.dataset.leadPreset)
+              ? component.dataset.leadPreset : "centered"))
+          : preset;
+        const size = Math.max(16, Math.min(56, Number(leadControls.size.value) || 28));
+        const weight = ["400", "600", "700", "800"].includes(leadControls.weight.value)
+          ? leadControls.weight.value : "700";
+        const align = ["left", "center", "right"].includes(leadControls.align.value)
+          ? leadControls.align.value : "center";
+        const placement = ["left", "center", "right"].includes(leadControls.placement.value)
+          ? leadControls.placement.value : "center";
+        const lineHeight = Math.max(1, Math.min(2.5, Number(leadControls.lineHeight.value) || 1.6));
+        const maxWidth = Math.max(30, Math.min(100, Number(leadControls.maxWidth.value) || 85));
+        const marginTop = Math.max(0, Math.min(120, Number(leadControls.marginTop.value) || 0));
+        const marginBottom = Math.max(0, Math.min(120, Number(leadControls.marginBottom.value) || 0));
+        const color = colorValue(leadControls.colorText.value, leadControls.color.value);
+        const accent = colorValue(leadControls.accentText.value, leadControls.accent.value);
+        const minimumSize = Math.max(16, Math.round(size * 0.72));
+        component.contentEditable = "false";
+        component.style.boxSizing = "border-box";
+        component.style.width = `${maxWidth}%`;
+        component.style.maxWidth = "100%";
+        component.style.marginTop = `${marginTop}px`;
+        component.style.marginBottom = `${marginBottom}px`;
+        component.style.marginLeft = placement === "right" || placement === "center" ? "auto" : "0";
+        component.style.marginRight = placement === "left" || placement === "center" ? "auto" : "0";
+        component.style.padding = "0";
+        component.style.border = "0";
+        component.style.borderRadius = "0";
+        component.style.boxShadow = "none";
+        component.style.background = "transparent";
+        const badgeStyle = ["badgeSolid", "badgeOutline", "badgeTag", "badgeStamp"].includes(decoration);
+        if (badgeStyle) {
+          component.style.width = "fit-content";
+          component.style.maxWidth = `${maxWidth}%`;
+        }
+        if (decoration === "accent") {
+          component.style.padding = "4px 0 4px 18px";
+          component.style.borderLeft = `6px solid ${accent}`;
+        } else if (decoration === "lines") {
+          component.style.padding = "14px 8px";
+          component.style.borderTop = `2px solid ${accent}`;
+          component.style.borderBottom = `2px solid ${accent}`;
+        } else if (decoration === "band") {
+          component.style.padding = "16px 20px";
+          component.style.border = `1px solid ${colorWithAlpha(accent, "55")}`;
+          component.style.borderRadius = "8px";
+          component.style.background = colorWithAlpha(accent, "18");
+        } else if (decoration === "frame") {
+          component.style.padding = "16px 20px";
+          component.style.border = `2px solid ${accent}`;
+          component.style.borderRadius = "10px";
+        } else if (decoration === "quote") {
+          component.style.padding = "12px 18px";
+          component.style.borderLeft = `5px solid ${accent}`;
+          component.style.background = colorWithAlpha(accent, "0d");
+        } else if (decoration === "underline") {
+          component.style.padding = "0 4px 10px";
+          component.style.borderBottom = `5px solid ${accent}`;
+        } else if (decoration === "dotted") {
+          component.style.padding = "14px 8px";
+          component.style.borderTop = `3px dotted ${accent}`;
+          component.style.borderBottom = `3px dotted ${accent}`;
+        } else if (decoration === "badgeSolid") {
+          component.style.padding = "9px 20px";
+          component.style.borderRadius = "999px";
+          component.style.background = accent;
+        } else if (decoration === "badgeOutline") {
+          component.style.padding = "8px 18px";
+          component.style.border = `2px solid ${accent}`;
+          component.style.borderRadius = "999px";
+        } else if (decoration === "badgeTag") {
+          component.style.padding = "9px 18px 9px 14px";
+          component.style.borderLeft = `7px solid ${accent}`;
+          component.style.borderRadius = "5px";
+          component.style.background = colorWithAlpha(accent, "18");
+        } else if (decoration === "badgeStamp") {
+          component.style.padding = "7px 16px";
+          component.style.border = `4px double ${accent}`;
+          component.style.borderRadius = "6px";
+        }
+        content.contentEditable = "true";
+        content.style.color = color;
+        content.style.fontSize = `clamp(${minimumSize}px,3vw,${size}px)`;
+        content.style.fontWeight = weight;
+        content.style.lineHeight = String(lineHeight);
+        content.style.textAlign = align;
+        content.style.fontStyle = decoration === "quote" ? "italic" : "normal";
+        content.style.letterSpacing = decoration === "badgeStamp" ? "0.08em" : "normal";
+        content.style.overflowWrap = "anywhere";
+        content.style.wordBreak = "break-word";
+        component.dataset.leadPreset = preset;
+        component.dataset.leadDecoration = decoration;
+        component.dataset.leadSize = String(size);
+        component.dataset.leadWeight = weight;
+        component.dataset.leadAlign = align;
+        component.dataset.leadPlacement = placement;
+        component.dataset.leadLineHeight = String(lineHeight);
+        component.dataset.leadMaxWidth = String(maxWidth);
+        component.dataset.leadMarginTop = String(marginTop);
+        component.dataset.leadMarginBottom = String(marginBottom);
+        component.dataset.leadColor = color;
+        component.dataset.leadAccent = accent;
       };
       const applyCompareSettings = (component) => {
         if (!component || component.dataset.insertedComponent !== "beforeAfter") return;
@@ -14372,6 +14830,11 @@ ${bodyHtml}
         if (type === "list") {
           applyListSettings(component);
         }
+        if (type === "lead") {
+          if (event?.target === leadControls.color) leadControls.colorText.value = leadControls.color.value;
+          if (event?.target === leadControls.accent) leadControls.accentText.value = leadControls.accent.value;
+          applyLeadSettings(component);
+        }
         if (type === "beforeAfter") {
           applyCompareSettings(component);
         }
@@ -14623,7 +15086,7 @@ ${bodyHtml}
         elements.tableCellColorText, elements.tableBorderColorText, elements.speechBubbleVertical, elements.speechBubbleHorizontal,
         elements.speechBubbleShape, elements.speechBubbleTailPosition, elements.speechBubbleTailSize,
         elements.speechBubbleTailAngle, elements.includeSpeechBubble, componentImageCaption, componentImageCaption2,
-        componentImageCaption3,
+        componentImageCaption3, componentImageCaption4,
         componentTableCaption
       ].forEach((input) => {
         input?.classList.add("component-property-input");
@@ -14718,11 +15181,25 @@ ${bodyHtml}
         applyImageLink(component);
         capturePreviewEdits();
       });
+      componentImagePath4.classList.add("component-property-input");
+      componentImagePath4.addEventListener("input", () => {
+        const component = getTargetComponent();
+        if (component?.dataset.insertedComponent !== "imagePair") return;
+        applyImageSources(component);
+        capturePreviewEdits();
+      });
+      componentImageLinkUrl4.classList.add("component-property-input");
+      componentImageLinkUrl4.addEventListener("input", () => {
+        const component = getTargetComponent();
+        if (component?.dataset.insertedComponent !== "imagePair") return;
+        applyImageLink(component);
+        capturePreviewEdits();
+      });
       componentImagePairCount.classList.add("component-property-input");
       componentImagePairCount.addEventListener("change", () => {
         const component = getTargetComponent();
         if (!["image", "imagePair"].includes(component?.dataset.insertedComponent)) return;
-        const desiredCount = Math.max(1, Math.min(3, Number(componentImagePairCount.value) || 1));
+        const desiredCount = Math.max(1, Math.min(4, Number(componentImagePairCount.value) || 1));
         const converted = convertImageCount(component, desiredCount);
         if (converted !== component) sync();
         applyComponentSpecificSettings();
@@ -14816,11 +15293,45 @@ ${bodyHtml}
         input.addEventListener("input", update);
         input.addEventListener("change", update);
       });
+      const leadPresets = {
+        centered: { align: "center", placement: "center", size: "28", weight: "700", lineHeight: "1.6", maxWidth: "85", marginTop: "28", marginBottom: "28" },
+        accent: { align: "left", placement: "left", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "100", marginTop: "24", marginBottom: "24" },
+        lines: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "90", marginTop: "28", marginBottom: "28" },
+        band: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "100", marginTop: "24", marginBottom: "24" },
+        frame: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "90", marginTop: "28", marginBottom: "28" },
+        quote: { align: "left", placement: "center", size: "25", weight: "600", lineHeight: "1.8", maxWidth: "85", marginTop: "28", marginBottom: "28" },
+        underline: { align: "left", placement: "left", size: "27", weight: "700", lineHeight: "1.6", maxWidth: "85", marginTop: "24", marginBottom: "24" },
+        dotted: { align: "center", placement: "center", size: "26", weight: "700", lineHeight: "1.6", maxWidth: "90", marginTop: "28", marginBottom: "28" },
+        badgeSolid: { align: "center", placement: "left", size: "22", weight: "700", lineHeight: "1.4", maxWidth: "90", marginTop: "10", marginBottom: "10" },
+        badgeOutline: { align: "center", placement: "left", size: "22", weight: "700", lineHeight: "1.4", maxWidth: "90", marginTop: "10", marginBottom: "10" },
+        badgeTag: { align: "left", placement: "left", size: "22", weight: "700", lineHeight: "1.4", maxWidth: "90", marginTop: "10", marginBottom: "10" },
+        badgeStamp: { align: "center", placement: "left", size: "21", weight: "800", lineHeight: "1.4", maxWidth: "90", marginTop: "10", marginBottom: "10" }
+      };
+      leadControls.preset.addEventListener("change", () => {
+        const preset = leadPresets[leadControls.preset.value];
+        if (!preset) return;
+        Object.entries(preset).forEach(([key, value]) => { leadControls[key].value = value; });
+        applyComponentSpecificSettings();
+      });
+      Object.entries(leadControls).forEach(([key, input]) => {
+        if (!input || key === "preset") return;
+        input.classList.add("component-property-input");
+        const update = () => {
+          if (key === "color") leadControls.colorText.value = input.value;
+          if (key === "accent") leadControls.accentText.value = input.value;
+          if (key === "colorText" && /^#[0-9a-f]{6}$/i.test(input.value.trim())) leadControls.color.value = input.value.trim();
+          if (key === "accentText" && /^#[0-9a-f]{6}$/i.test(input.value.trim())) leadControls.accent.value = input.value.trim();
+          leadControls.preset.value = "custom";
+          applyComponentSpecificSettings();
+        };
+        input.addEventListener("input", update);
+        input.addEventListener("change", update);
+      });
       const listPresets = {
         simple: { marker: "disc", markerColor: "#2563eb", itemGap: "6", itemBackground: "#ffffff", itemBorderStyle: "none", itemRadius: "0", itemPadding: "0", alternate: false, divider: false, background: "#ffffff", borderStyle: "none", radius: "0", padding: "0" },
         check: { marker: "check", markerColor: "#16a34a", itemGap: "7", itemBackground: "#f0fdf4", itemBorderStyle: "solid", itemRadius: "7", itemPadding: "9", alternate: false, divider: false, background: "#ffffff", borderStyle: "none", radius: "0", padding: "0" },
         steps: { marker: "decimal", markerColor: "#2563eb", itemGap: "10", itemBackground: "#eff6ff", itemBorderStyle: "left", itemRadius: "5", itemPadding: "11", alternate: false, divider: false, background: "#ffffff", borderStyle: "none", radius: "0", padding: "0" },
-        cards: { marker: "star", markerColor: "#7c3aed", itemGap: "10", itemBackground: "#f8fafc", itemBorderStyle: "solid", itemRadius: "8", itemPadding: "12", alternate: false, divider: false, background: "#ffffff", borderStyle: "none", radius: "0", padding: "0" },
+        cards: { marker: "decimal", numberBadge: true, numberBadgeStyle: "roundedSquare", markerColor: "#7c3aed", markerSize: "18", markerGap: "12", itemGap: "10", itemBackground: "#f8fafc", itemBorderStyle: "solid", itemRadius: "8", itemPadding: "12", alternate: false, divider: false, background: "#ffffff", borderStyle: "none", radius: "0", padding: "0" },
         warning: { marker: "custom", customMarker: "⚠", markerColor: "#d97706", itemGap: "8", itemBackground: "#fff7ed", itemBorderStyle: "left", itemRadius: "4", itemPadding: "10", alternate: false, divider: false, background: "#ffffff", borderStyle: "none", radius: "0", padding: "0" },
         materials: { marker: "square", markerColor: "#0f8b8d", itemGap: "0", itemBackground: "#ffffff", itemBorderStyle: "none", itemRadius: "0", itemPadding: "9", alternate: true, divider: true, background: "#f8fafc", borderStyle: "solid", radius: "8", padding: "8" }
       };
@@ -14833,6 +15344,10 @@ ${bodyHtml}
         if (!preset) return;
         listControls.marker.value = preset.marker;
         if (preset.customMarker) listControls.customMarker.value = preset.customMarker;
+        if (preset.markerSize) listControls.markerSize.value = preset.markerSize;
+        if (preset.markerGap) listControls.markerGap.value = preset.markerGap;
+        listControls.numberBadge.checked = preset.numberBadge === true;
+        listControls.numberBadgeStyle.value = preset.numberBadgeStyle || "roundedSquare";
         setListColor(listControls.markerColor, listControls.markerColorText, preset.markerColor);
         listControls.itemGap.value = preset.itemGap;
         setListColor(listControls.itemBackground, listControls.itemBackgroundText, preset.itemBackground);
@@ -15310,6 +15825,7 @@ ${bodyHtml}
       const blocks = {
         document: `<div data-inserted-component="document" data-document-url="" data-document-title="" data-document-caption="" data-document-height="420" contenteditable="false" style="margin:14px 0;padding:20px;border:1px dashed #94a3b8;border-radius:8px;">設定でSpeaker Deck・SlideShare、またはGoogleドライブ上のPDF共有URLを入力してください。</div>`,
         shape: shapeComponentHtml(),
+        lead: `<div data-inserted-component="lead" data-lead-preset="centered" data-lead-size="28" data-lead-weight="700" data-lead-align="center" data-lead-color="#172033" data-lead-accent="#0f8b8d" data-lead-line-height="1.6" data-lead-max-width="85" data-lead-placement="center" data-lead-margin-top="28" data-lead-margin-bottom="28" contenteditable="false" style="box-sizing:border-box;width:85%;max-width:100%;margin:28px auto;padding:0;border:0;background:transparent;"><div data-lead-content="true" contenteditable="true" style="color:#172033;font-size:clamp(20px,3vw,28px);font-weight:700;line-height:1.6;text-align:center;overflow-wrap:anywhere;word-break:break-word;">作品の魅力や結論を、印象的な一文で伝えます。</div></div>`,
         list: `<ul data-inserted-component="list" data-list-marker="disc" style="margin:14px 0;padding:0 0 0 24px;list-style-type:disc;"><li contenteditable="true">項目1</li><li contenteditable="true">項目2</li><li contenteditable="true">項目3</li></ul>`,
         note: `<div data-inserted-component="note" contenteditable="true" style="margin:14px 0;padding:12px 16px;border-left:5px solid #0f8b8d;background:#eef8f8;border-radius:8px;">メモや注意事項を入力</div>`,
         quote: `<blockquote data-inserted-component="quote" contenteditable="true" style="margin:14px 0;padding:12px 16px;border-left:5px solid #64748b;background:#f4f6f8;color:#334155;">引用文を入力</blockquote>`,
@@ -16503,7 +17019,8 @@ ${bodyHtml}
       holder.innerHTML = html;
       const node = holder.firstElementChild;
       if (!node) return;
-      const insertInsideBody = enclosingComponent?.dataset.insertedComponent === "body"
+      const insertInsideBody = type !== "lead"
+        && enclosingComponent?.dataset.insertedComponent === "body"
         && selection.rangeCount
         && enclosingComponent.contains(selection.getRangeAt(0).commonAncestorContainer);
       if (type === "toc") {
@@ -16743,15 +17260,22 @@ ${bodyHtml}
       applySelectionFormat("subscript");
     });
     const selectionHighlightColor = document.querySelector("#selectionHighlightColor");
-    const selectionHighlightColorPreview = document.querySelector("#selectionHighlightColorPreview");
+    const selectionHighlightStyle = document.querySelector("#selectionHighlightStyle");
     document.querySelector("#selectionHighlightButton").addEventListener("click", () => {
-      applySelectionFormat("hiliteColor", selectionHighlightColor.value);
+      const colorButton = document.querySelector("#selectionHighlightColorButton");
+      const forceApply = colorButton.dataset.applySelectedMarker === "true";
+      applySelectionFormat("hiliteColor", selectionHighlightColor.value, {
+        markerStyle: selectionHighlightStyle.value,
+        forceApply
+      });
+      delete colorButton.dataset.applySelectedMarker;
     });
-    selectionHighlightColor.addEventListener("input", (event) => {
-      selectionHighlightColorPreview.style.background = event.target.value;
+    selectionHighlightColor.addEventListener("input", () => {
+      syncSelectionHighlightPreview();
+      document.querySelector("#selectionHighlightColorButton").dataset.applySelectedMarker = "true";
     });
-    selectionHighlightColor.addEventListener("change", (event) => {
-      applySelectionFormat("hiliteColor", event.target.value, { forceApply: true });
+    selectionHighlightColor.addEventListener("change", () => {
+      syncSelectionHighlightPreview();
       document.querySelector("#selectionHighlightPopover").hidden = true;
       document.querySelector("#selectionHighlightColorButton").setAttribute("aria-expanded", "false");
     });
@@ -18178,6 +18702,51 @@ ${bodyHtml}
       });
     })();
 
+    const textBackupTimestamp = (date = new Date()) => {
+      const pad = (value) => String(value).padStart(2, "0");
+      return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+    };
+
+    async function savePastedTextBackup(text, { type, extension, mime }) {
+      const content = String(text ?? "");
+      if (!content.trim()) {
+        setStatus(`${type}テキストを貼り付けてください`);
+        return false;
+      }
+      const suggestedName = `p-player-${type.toLowerCase()}-backup-${textBackupTimestamp()}.${extension}`;
+      const blob = new Blob([content], { type: `${mime};charset=utf-8` });
+      if (typeof window.showSaveFilePicker === "function") {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName,
+            types: [{ description: `${type}テキスト`, accept: { [mime]: [`.${extension}`] } }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          setStatus(`貼り付けた${type}を「${handle.name || suggestedName}」に保存しました`);
+          return true;
+        } catch (error) {
+          if (error?.name === "AbortError") return false;
+          console.error(error);
+          setStatus(`${type}のバックアップを保存できませんでした`);
+          return false;
+        }
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = suggestedName;
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        link.remove();
+        URL.revokeObjectURL(url);
+      }, 1000);
+      setStatus(`貼り付けた${type}をバックアップ保存しました`);
+      return true;
+    }
+
     const markdownFileInput = document.querySelector("#markdownFileInput");
     const markdownImportDialog = document.querySelector("#markdownImportDialog");
     const markdownFilePanel = document.querySelector("#markdownFilePanel");
@@ -18216,6 +18785,12 @@ ${bodyHtml}
     });
     document.querySelector("#markdownImportCancelButton")?.addEventListener("click", () => {
       markdownImportDialog?.close();
+    });
+    document.querySelector("#markdownPasteSaveButton")?.addEventListener("click", async () => {
+      const saved = await savePastedTextBackup(markdownPasteText.value, {
+        type: "Markdown", extension: "md", mime: "text/markdown"
+      });
+      if (!saved) markdownPasteText.focus();
     });
     markdownImportConfirmButton?.addEventListener("click", async () => {
       const mode = syncMarkdownImportMode();
@@ -18418,6 +18993,7 @@ ${bodyHtml}
         if (["heading", "body"].includes(type)) return;
         component.contentEditable = ["note", "quote"].includes(type) ? "true" : "false";
         if (type === "list") component.querySelectorAll("li").forEach((item) => { item.contentEditable = "true"; });
+        if (type === "lead") component.querySelector("[data-lead-content]")?.setAttribute("contenteditable", "true");
         if (type === "table") component.querySelectorAll("th,td").forEach((cell) => { cell.contentEditable = "true"; });
         if (["image", "imageText", "imagePair"].includes(type)) {
           component.querySelectorAll("figcaption,[data-image-caption]").forEach((caption) => { caption.contentEditable = "true"; });
@@ -18529,6 +19105,12 @@ ${bodyHtml}
       htmlSelectedFileName.textContent = htmlFileInput.files?.[0]?.name || "選択されていません";
     });
     document.querySelector("#htmlImportCancelButton")?.addEventListener("click", () => htmlImportDialog?.close());
+    document.querySelector("#htmlPasteSaveButton")?.addEventListener("click", async () => {
+      const saved = await savePastedTextBackup(htmlPasteText.value, {
+        type: "HTML", extension: "html", mime: "text/html"
+      });
+      if (!saved) htmlPasteText.focus();
+    });
     htmlImportConfirmButton?.addEventListener("click", async () => {
       const mode = syncHtmlImportMode();
       if (!confirmUnsavedArticle()) return;

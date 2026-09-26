@@ -373,7 +373,7 @@ class EditorTests(unittest.TestCase):
                                      afterFailure=True, afterSuccess=False, afterUndo=True, afterRedo=False))
 
     def test_all_parts_json_and_html_round_trip(self):
-        types = ['heading', 'body', 'list', 'note', 'quote', 'qa', 'table', 'image', 'imageText', 'imagePair',
+        types = ['heading', 'body', 'lead', 'list', 'note', 'quote', 'qa', 'table', 'image', 'imageText', 'imagePair',
                  'beforeAfter', 'code', 'rule', 'xpost', 'video', 'accordion', 'linkCard', 'toc', 'shape']
         result = self.page.evaluate("""async types => {
             window.twttr = {widgets:{load:() => {}}};
@@ -648,6 +648,77 @@ class EditorTests(unittest.TestCase):
         self.assertIn("貼り付けたHTML", result["fileLabel"])
         self.assertTrue(result["overwriteDisabled"])
 
+    def test_pasted_markdown_and_html_can_be_saved_as_raw_text_backups(self):
+        result = self.page.evaluate("""async () => {
+            const records = [];
+            Object.defineProperty(window, 'showSaveFilePicker', {configurable:true, value:async options => {
+              const record = {options, text:null, mime:null, closed:false};
+              records.push(record);
+              return {name:options.suggestedName, async createWritable() { return {
+                async write(blob) { record.text = await blob.text(); record.mime = blob.type; },
+                async close() { record.closed = true; }
+              }; }};
+            }});
+            const previewBefore = elements.preview.innerHTML;
+            const savePaste = async (openId, modeName, textId, buttonId, text) => {
+              document.getElementById(openId).click();
+              const mode = document.querySelector(`input[name="${modeName}"][value="paste"]`);
+              mode.checked = true;
+              mode.dispatchEvent(new Event('change', {bubbles:true}));
+              const textarea = document.getElementById(textId);
+              textarea.value = text;
+              document.getElementById(buttonId).click();
+              const index = records.length - 1;
+              while (!records[index]?.closed) await new Promise(resolve => setTimeout(resolve, 0));
+              return {value:textarea.value,
+                buttonText:document.getElementById(buttonId).textContent,
+                visible:!document.getElementById(buttonId).closest('.markdown-import-panel').hidden,
+                open:textarea.closest('dialog').open};
+            };
+            const markdown = `# 見出し
+
+本文 **太字**
+<script>raw only</script>`;
+            const markdownUi = await savePaste('importMarkdownButton', 'markdownImportMode',
+              'markdownPasteText', 'markdownPasteSaveButton', markdown);
+            document.querySelector('#markdownImportDialog').close();
+            const html = `<!-- backup -->
+<section><h2>題名</h2><p>本文 &amp; 記号</p></section>`;
+            const htmlUi = await savePaste('importHtmlButton', 'htmlImportMode',
+              'htmlPasteText', 'htmlPasteSaveButton', html);
+            document.querySelector('#htmlImportDialog').close();
+            const countBeforeEmpty = records.length;
+            const emptySaved = await savePastedTextBackup('   ',
+              {type:'Markdown', extension:'md', mime:'text/markdown'});
+            return {records, markdown, html, markdownUi, htmlUi, emptySaved,
+              emptyCreated:records.length !== countBeforeEmpty,
+              emptyStatus:elements.status.textContent,
+              previewUnchanged:elements.preview.innerHTML === previewBefore,
+              unsafeRan:window.raw === true};
+        }""")
+        self.assertEqual(len(result['records']), 2)
+        markdown_record, html_record = result['records']
+        self.assertRegex(markdown_record['options']['suggestedName'],
+                         r'^p-player-markdown-backup-\d{8}-\d{6}\.md$')
+        self.assertRegex(html_record['options']['suggestedName'],
+                         r'^p-player-html-backup-\d{8}-\d{6}\.html$')
+        self.assertEqual(markdown_record['options']['types'][0]['accept'], {'text/markdown': ['.md']})
+        self.assertEqual(html_record['options']['types'][0]['accept'], {'text/html': ['.html']})
+        self.assertEqual(markdown_record['text'], result['markdown'])
+        self.assertEqual(html_record['text'], result['html'])
+        self.assertEqual(markdown_record['mime'], 'text/markdown;charset=utf-8')
+        self.assertEqual(html_record['mime'], 'text/html;charset=utf-8')
+        for key, extension in [('markdownUi', '.md'), ('htmlUi', '.html')]:
+            self.assertEqual(result[key]['value'], result['markdown' if key == 'markdownUi' else 'html'])
+            self.assertIn(extension, result[key]['buttonText'])
+            self.assertTrue(result[key]['visible'])
+            self.assertTrue(result[key]['open'])
+        self.assertFalse(result['emptySaved'])
+        self.assertFalse(result['emptyCreated'])
+        self.assertIn('Markdownテキストを貼り付けてください', result['emptyStatus'])
+        self.assertTrue(result['previewUnchanged'])
+        self.assertFalse(result['unsafeRan'])
+
     def test_html_import_recovers_x_groups_and_youtube_settings(self):
         result = self.page.evaluate("""() => {
             window.twttr = {widgets: {load: () => {}}};
@@ -728,7 +799,7 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result['handlers'], 0)
 
     def test_component_insert_save_restore(self):
-        types = ["list", "note", "quote", "qa", "table", "image", "imageText", "imagePair",
+        types = ["lead", "list", "note", "quote", "qa", "table", "image", "imageText", "imagePair",
                  "beforeAfter", "code", "rule", "xpost", "video", "linkCard", "toc"]
         result = self.page.evaluate("""types => {
             elements.preview.replaceChildren(); capturePreviewEdits();
@@ -742,6 +813,126 @@ class EditorTests(unittest.TestCase):
             return [...elements.preview.querySelectorAll('[data-inserted-component]')].map(el => el.dataset.insertedComponent);
         }""", types)
         self.assertCountEqual(result, types)
+
+    def test_large_lead_part_presets_settings_and_html_restore(self):
+        result = self.page.evaluate("""() => {
+            const fragment = document.createDocumentFragment();
+            fragment.append('選択中の本文');
+            const body = createDocumentBlockFromFragment('body', fragment, readDocumentBlockSettings('body'));
+            elements.preview.replaceChildren(body);
+            activeInsertedComponent = body;
+            const range = document.createRange();
+            range.selectNodeContents(body);
+            range.collapse(false);
+            const selection = getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            savedPreviewRange = range.cloneRange();
+            insertComponentAtSelection('lead');
+            const lead = activeInsertedComponent;
+            const outsideBody = body.nextElementSibling === lead && !body.contains(lead);
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const preset = document.querySelector('#leadPreset');
+            const states = {};
+            for (const value of ['accent', 'lines', 'band', 'frame', 'quote', 'underline', 'dotted', 'badgeSolid', 'badgeOutline', 'badgeTag', 'badgeStamp', 'centered']) {
+              preset.value = value;
+              preset.dispatchEvent(new Event('change', {bubbles:true}));
+              states[value] = {
+                left:lead.style.borderLeftWidth,
+                top:lead.style.borderTopWidth,
+                bottom:lead.style.borderBottomWidth,
+                style:lead.style.borderTopStyle || lead.style.borderLeftStyle || lead.style.borderBottomStyle,
+                radius:lead.style.borderRadius,
+                width:lead.style.width,
+                maxWidth:lead.style.maxWidth,
+                marginLeft:lead.style.marginLeft,
+                marginRight:lead.style.marginRight,
+                marginTop:lead.style.marginTop,
+                marginBottom:lead.style.marginBottom,
+                background:lead.style.backgroundColor,
+                fontStyle:lead.querySelector('[data-lead-content]').style.fontStyle,
+                align:lead.querySelector('[data-lead-content]').style.textAlign
+              };
+            }
+            preset.value = 'band';
+            preset.dispatchEvent(new Event('change', {bubbles:true}));
+            document.querySelector('#leadSize').value = '40';
+            document.querySelector('#leadMaxWidth').value = '70';
+            document.querySelector('#leadPlacement').value = 'right';
+            document.querySelector('#leadLineHeight').value = '1.8';
+            document.querySelector('#leadColorText').value = '#334155';
+            document.querySelector('#leadAccentText').value = '#dc2626';
+            document.querySelector('#leadSize').dispatchEvent(new Event('input', {bubbles:true}));
+            const content = lead.querySelector('[data-lead-content]');
+            content.innerHTML = '<strong>大型リード文</strong><br>補足メッセージ';
+            const custom = {
+              preset:lead.dataset.leadPreset,
+              fontSize:content.style.fontSize,
+              width:lead.style.width,
+              marginLeft:lead.style.marginLeft,
+              marginRight:lead.style.marginRight,
+              lineHeight:content.style.lineHeight,
+              color:content.style.color,
+              accent:lead.dataset.leadAccent,
+              decoration:lead.dataset.leadDecoration
+            };
+            const exported = formatOutputHtml(getPersistablePreviewHtml());
+            importArticleHtml(exported, 'lead.html');
+            const restored = elements.preview.querySelector('[data-inserted-component="lead"]');
+            return {
+              menu:[...document.querySelectorAll('#componentInsertSelect option')].some(option => option.value === 'lead'),
+              quick:!!document.querySelector('.component-quick-button[data-component-type="lead"]'),
+              outsideBody,
+              states,
+              custom,
+              restored:!!restored,
+              restoredText:restored?.querySelector('[data-lead-content]')?.innerText,
+              restoredEditable:restored?.querySelector('[data-lead-content]')?.getAttribute('contenteditable'),
+              isHeading:!!restored?.querySelector('h1,h2,h3,h4,h5,h6')
+            };
+        }""")
+        self.assertTrue(result["menu"])
+        self.assertTrue(result["quick"])
+        self.assertTrue(result["outsideBody"])
+        self.assertEqual(result["states"]["accent"]["left"], "6px")
+        self.assertEqual(result["states"]["accent"]["align"], "left")
+        self.assertEqual(result["states"]["lines"]["top"], "2px")
+        self.assertEqual(result["states"]["lines"]["bottom"], "2px")
+        self.assertEqual(result["states"]["band"]["radius"], "8px")
+        self.assertNotEqual(result["states"]["band"]["background"], "")
+        self.assertEqual(result["states"]["frame"]["top"], "2px")
+        self.assertEqual(result["states"]["frame"]["radius"], "10px")
+        self.assertEqual(result["states"]["quote"]["left"], "5px")
+        self.assertEqual(result["states"]["quote"]["fontStyle"], "italic")
+        self.assertEqual(result["states"]["underline"]["bottom"], "5px")
+        self.assertEqual(result["states"]["dotted"]["style"], "dotted")
+        self.assertEqual(result["states"]["badgeSolid"]["width"], "fit-content")
+        self.assertEqual(result["states"]["badgeSolid"]["radius"], "999px")
+        self.assertNotEqual(result["states"]["badgeSolid"]["background"], "")
+        self.assertEqual(result["states"]["badgeSolid"]["marginLeft"], "0px")
+        self.assertEqual(result["states"]["badgeSolid"]["marginRight"], "auto")
+        self.assertEqual(result["states"]["badgeSolid"]["marginTop"], "10px")
+        self.assertEqual(result["states"]["badgeSolid"]["marginBottom"], "10px")
+        self.assertEqual(result["states"]["badgeOutline"]["top"], "2px")
+        self.assertEqual(result["states"]["badgeOutline"]["radius"], "999px")
+        self.assertEqual(result["states"]["badgeTag"]["left"], "7px")
+        self.assertEqual(result["states"]["badgeStamp"]["top"], "4px")
+        self.assertEqual(result["states"]["badgeStamp"]["style"], "double")
+        self.assertEqual(result["states"]["centered"]["align"], "center")
+        self.assertEqual(result["custom"]["preset"], "custom")
+        self.assertIn("40px", result["custom"]["fontSize"])
+        self.assertEqual(result["custom"]["width"], "70%")
+        self.assertEqual(result["custom"]["marginLeft"], "auto")
+        self.assertEqual(result["custom"]["marginRight"], "0px")
+        self.assertEqual(result["custom"]["lineHeight"], "1.8")
+        self.assertIn("51, 65, 85", result["custom"]["color"])
+        self.assertEqual(result["custom"]["accent"], "#dc2626")
+        self.assertEqual(result["custom"]["decoration"], "band")
+        self.assertTrue(result["restored"])
+        self.assertEqual(result["restoredText"], "大型リード文\n補足メッセージ")
+        self.assertEqual(result["restoredEditable"], "true")
+        self.assertFalse(result["isHeading"])
 
     def test_image_insert_ui_is_unified_and_legacy_types_remain_supported(self):
         result = self.page.evaluate("""() => {
@@ -1138,6 +1329,373 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["secondCaption"], "second caption")
         self.assertEqual(result["reducedCount"], 2)
         self.assertEqual(result["expandedCount"], 3)
+
+    def test_four_image_gallery_preserves_fourth_image_link_and_caption(self):
+        result = self.page.evaluate("""() => {
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedComponentHtml('imagePair');
+            elements.preview.replaceChildren(holder.firstElementChild);
+            activeInsertedComponent = elements.preview.firstElementChild;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const count = document.querySelector('#componentImagePairCount');
+            count.value = '4';
+            count.dispatchEvent(new Event('change', {bubbles:true}));
+            const path = document.querySelector('#componentImagePath4');
+            path.value = 'https://example.com/four.png';
+            path.dispatchEvent(new Event('input', {bubbles:true}));
+            const link = document.querySelector('#componentImageLinkUrl4');
+            link.value = 'https://example.com/four';
+            link.dispatchEvent(new Event('input', {bubbles:true}));
+            const captionToggle = document.querySelector('#componentImageCaption4');
+            captionToggle.checked = true;
+            captionToggle.dispatchEvent(new Event('change', {bubbles:true}));
+            activeInsertedComponent.children[3].querySelector('[data-image-caption]').textContent = 'fourth caption';
+            count.value = '2';
+            count.dispatchEvent(new Event('change', {bubbles:true}));
+            count.value = '4';
+            count.dispatchEvent(new Event('change', {bubbles:true}));
+            const images = activeInsertedComponent.querySelectorAll('img[data-inserted-image]');
+            return {
+              count:images.length,
+              pairCount:activeInsertedComponent.dataset.imagePairCount,
+              fourthSrc:images[3].dataset.securitySrc || images[3].getAttribute('src'),
+              fourthLink:images[3].parentElement.getAttribute('href'),
+              fourthCaption:activeInsertedComponent.children[3].querySelector('[data-image-caption]')?.textContent,
+              grid:activeInsertedComponent.style.gridTemplateColumns
+            };
+        }""")
+        self.assertEqual(result["count"], 4)
+        self.assertEqual(result["pairCount"], "4")
+        self.assertEqual(result["fourthSrc"], "https://example.com/four.png")
+        self.assertEqual(result["fourthLink"], "https://example.com/four")
+        self.assertEqual(result["fourthCaption"], "fourth caption")
+        self.assertIn("repeat(4", result["grid"])
+
+    def test_point_card_list_uses_number_badges_and_keeps_them_when_customized(self):
+        result = self.page.evaluate("""() => {
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedComponentHtml('list');
+            elements.preview.replaceChildren(holder.firstElementChild);
+            activeInsertedComponent = elements.preview.firstElementChild;
+            const properties = document.querySelector('.inserted-component-properties');
+            properties._sync();
+            const preset = document.querySelector('#listDesignPreset');
+            const badgeStyleField = document.querySelector('#listNumberBadgeStyle').closest('.field');
+            const lineBreakHelp = badgeStyleField.nextElementSibling;
+            preset.value = 'cards';
+            preset.dispatchEvent(new Event('change', {bubbles:true}));
+            const start = document.querySelector('#listStartNumber');
+            start.value = '4';
+            start.dispatchEvent(new Event('input', {bubbles:true}));
+            const markers = [...activeInsertedComponent.querySelectorAll('[data-list-marker-part]')];
+            const style = document.querySelector('#listNumberBadgeStyle');
+            const defaultStyle = style.value;
+            const designs = {};
+            for (const value of ['solidCircle', 'outlineCircle', 'roundedSquare', 'label']) {
+              style.value = value;
+              style.dispatchEvent(new Event('change', {bubbles:true}));
+              const marker = activeInsertedComponent.querySelector('[data-list-marker-part]');
+              designs[value] = {text:marker.textContent, background:marker.style.backgroundColor,
+                border:marker.style.borderStyle, radius:marker.style.borderRadius};
+            }
+            return {
+              preset:preset.value,
+              badge:activeInsertedComponent.dataset.listNumberBadge,
+              texts:markers.map(marker => marker.textContent),
+              defaultStyle,
+              designs,
+              savedStyle:activeInsertedComponent.dataset.listNumberBadgeStyle,
+              lineBreakHelp:lineBreakHelp?.textContent.trim(),
+              helpIsRightAfterStyle:lineBreakHelp?.classList.contains('list-line-break-help')
+            };
+        }""")
+        self.assertEqual(result["preset"], "custom")
+        self.assertEqual(result["badge"], "true")
+        self.assertEqual(result["defaultStyle"], "roundedSquare")
+        self.assertEqual(result["designs"]["solidCircle"]["text"], "4")
+        self.assertTrue(result["designs"]["solidCircle"]["background"])
+        self.assertEqual(result["designs"]["outlineCircle"]["background"], "transparent")
+        self.assertEqual(result["designs"]["outlineCircle"]["border"], "solid")
+        self.assertNotEqual(result["designs"]["roundedSquare"]["radius"], "999px")
+        self.assertEqual(result["designs"]["label"]["text"], "POINT 4")
+        self.assertEqual(result["savedStyle"], "label")
+        self.assertEqual(result["lineBreakHelp"], "Shift + Enterでグループ内で改行できます")
+        self.assertTrue(result["helpIsRightAfterStyle"])
+
+    def test_half_height_text_marker_applies_persists_and_toggles_off(self):
+        result = self.page.evaluate("""() => {
+            const body = document.createElement('div');
+            body.dataset.insertedComponent = 'body';
+            body.contentEditable = 'true';
+            body.textContent = '下半分マーカー';
+            elements.preview.replaceChildren(body);
+            const styleControl = document.querySelector('#selectionHighlightStyle');
+            styleControl.value = 'half';
+            styleControl.dispatchEvent(new Event('change', {bubbles:true}));
+            const previewHalf = document.querySelector('#selectionHighlightColorPreview').style.backgroundImage;
+            const swatchHalf = document.querySelector('#selectionHighlightPalette [data-marker-color]').style.backgroundImage;
+            styleControl.value = 'full';
+            styleControl.dispatchEvent(new Event('change', {bubbles:true}));
+            const previewFull = document.querySelector('#selectionHighlightColorPreview').style.backgroundImage;
+            styleControl.value = 'half';
+            styleControl.dispatchEvent(new Event('change', {bubbles:true}));
+            const selectContents = (target) => {
+              const range = document.createRange();
+              range.selectNodeContents(target);
+              const selection = getSelection();
+              selection.removeAllRanges();
+              selection.addRange(range);
+              savedPreviewRange = range.cloneRange();
+            };
+            selectContents(body);
+            applySelectionFormat('hiliteColor', '#fef08a', {forceApply:true, markerStyle:'half'});
+            const marker = body.querySelector('[data-half-highlight="true"]');
+            const saved = getPersistablePreviewHtml();
+            const sanitized = sanitizeArticleMarkup(saved);
+            const state = {
+              styleOptions:[...document.querySelectorAll('#selectionHighlightStyle option')].map(option => option.value),
+              previewHalf, swatchHalf, previewFull,
+              text:marker?.textContent,
+              image:marker?.style.backgroundImage,
+              repeat:marker?.style.backgroundRepeat,
+              saved:saved.includes('data-half-highlight="true"'),
+              sanitized:sanitized.includes('data-half-highlight="true"')
+            };
+            selectContents(marker);
+            resetSelectionFormatting();
+            state.resetRemoved = !body.querySelector('[data-half-highlight="true"]');
+            state.resetText = body.textContent;
+            selectContents(body);
+            applySelectionFormat('hiliteColor', '#fef08a', {forceApply:true, markerStyle:'half'});
+            const reappliedMarker = body.querySelector('[data-half-highlight="true"]');
+            selectContents(reappliedMarker);
+            applySelectionFormat('hiliteColor', '#fef08a', {markerStyle:'half'});
+            state.removed = !body.querySelector('[data-half-highlight="true"]');
+            state.remainingText = body.textContent;
+            return state;
+        }""")
+        self.assertEqual(result["styleOptions"], ["full", "half"])
+        self.assertIn("linear-gradient", result["previewHalf"])
+        self.assertIn("linear-gradient", result["swatchHalf"])
+        self.assertNotIn("linear-gradient", result["previewFull"])
+        self.assertEqual(result["text"], "下半分マーカー")
+        self.assertIn("linear-gradient", result["image"])
+        self.assertIn("50%", result["image"])
+        self.assertEqual(result["repeat"], "no-repeat")
+        self.assertTrue(result["saved"])
+        self.assertTrue(result["sanitized"])
+        self.assertTrue(result["resetRemoved"])
+        self.assertEqual(result["resetText"], "下半分マーカー")
+        self.assertTrue(result["removed"])
+        self.assertEqual(result["remainingText"], "下半分マーカー")
+
+    def test_reselected_markers_can_be_overwritten_and_removed(self):
+        result = self.page.evaluate("""() => {
+            const body = document.createElement('div');
+            body.dataset.insertedComponent = 'body';
+            body.contentEditable = 'true';
+            body.textContent = '再選択マーカー';
+            elements.preview.replaceChildren(body);
+            const selectContents = (target) => {
+              const range = document.createRange();
+              range.selectNodeContents(target);
+              const selection = getSelection();
+              selection.removeAllRanges();
+              selection.addRange(range);
+              savedPreviewRange = range.cloneRange();
+            };
+            const fullMarker = () => [...body.querySelectorAll('span, font, mark')].find((element) => {
+              const color = element.style.backgroundColor;
+              return color && color !== 'transparent' && color !== 'rgba(0, 0, 0, 0)';
+            });
+            selectContents(body);
+            applySelectionFormat('hiliteColor', '#fef08a', {forceApply:true, markerStyle:'full'});
+            selectContents(fullMarker());
+            applySelectionFormat('hiliteColor', '#7dd3fc', {forceApply:true, markerStyle:'full'});
+            const fullOverwrite = fullMarker()?.style.backgroundColor;
+            selectContents(fullMarker());
+            applySelectionFormat('hiliteColor', '#7dd3fc', {markerStyle:'full'});
+            const fullRemoved = !fullMarker();
+
+            selectContents(body);
+            applySelectionFormat('hiliteColor', '#fef08a', {forceApply:true, markerStyle:'half'});
+            selectContents(body.querySelector('[data-half-highlight="true"]'));
+            applySelectionFormat('hiliteColor', '#7dd3fc', {forceApply:true, markerStyle:'half'});
+            const halfOverwrite = body.querySelector('[data-half-highlight="true"]')?.style.backgroundImage;
+            selectContents(body.querySelector('[data-half-highlight="true"]'));
+            applySelectionFormat('hiliteColor', '#7dd3fc', {markerStyle:'half'});
+            return {
+              fullOverwrite,
+              fullRemoved,
+              halfOverwrite,
+              halfRemoved:!body.querySelector('[data-half-highlight="true"]'),
+              text:body.textContent
+            };
+        }""")
+        self.assertIn("125, 211, 252", result["fullOverwrite"])
+        self.assertTrue(result["fullRemoved"])
+        self.assertIn("125, 211, 252", result["halfOverwrite"])
+        self.assertNotIn("254, 240, 138", result["halfOverwrite"])
+        self.assertTrue(result["halfRemoved"])
+        self.assertEqual(result["text"], "再選択マーカー")
+
+    def test_marker_changes_are_limited_to_the_reselected_characters(self):
+        result = self.page.evaluate("""() => {
+            const body = document.createElement('div');
+            body.dataset.insertedComponent = 'body';
+            body.contentEditable = 'true';
+            elements.preview.replaceChildren(body);
+            const selectText = (start, end) => {
+              const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+              let node;
+              let offset = 0;
+              let startNode, startOffset, endNode, endOffset;
+              while ((node = walker.nextNode())) {
+                const next = offset + node.length;
+                if (!startNode && start >= offset && start <= next) {
+                  startNode = node; startOffset = start - offset;
+                }
+                if (!endNode && end >= offset && end <= next) {
+                  endNode = node; endOffset = end - offset; break;
+                }
+                offset = next;
+              }
+              const range = document.createRange();
+              range.setStart(startNode, startOffset);
+              range.setEnd(endNode, endOffset);
+              const selection = getSelection();
+              selection.removeAllRanges();
+              selection.addRange(range);
+              savedPreviewRange = range.cloneRange();
+            };
+            const decorations = () => {
+              const values = [];
+              const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+              let node;
+              while ((node = walker.nextNode())) {
+                for (const character of node.nodeValue) {
+                  let element = node.parentElement;
+                  let value = 'none';
+                  while (element && body.contains(element)) {
+                    if (element.dataset.halfHighlight === 'true') {
+                      value = element.style.backgroundImage; break;
+                    }
+                    if (element.style.backgroundColor && element.style.backgroundColor !== 'transparent') {
+                      value = element.style.backgroundColor; break;
+                    }
+                    element = element.parentElement;
+                  }
+                  values.push({character, value});
+                }
+              }
+              return values;
+            };
+
+            body.textContent = 'ABCDE';
+            selectText(0, 5);
+            applySelectionFormat('hiliteColor', '#fef08a', {forceApply:true, markerStyle:'full'});
+            selectText(1, 3);
+            applySelectionFormat('hiliteColor', '#7dd3fc', {forceApply:true, markerStyle:'full'});
+            const fullOverwrite = decorations();
+            selectText(1, 2);
+            applySelectionFormat('hiliteColor', '#7dd3fc', {markerStyle:'full'});
+            const fullRemove = decorations();
+
+            body.textContent = 'ABCDE';
+            selectText(0, 5);
+            applySelectionFormat('hiliteColor', '#fef08a', {forceApply:true, markerStyle:'half'});
+            selectText(1, 3);
+            applySelectionFormat('hiliteColor', '#7dd3fc', {forceApply:true, markerStyle:'half'});
+            const halfOverwrite = decorations();
+            selectText(1, 2);
+            applySelectionFormat('hiliteColor', '#7dd3fc', {markerStyle:'half'});
+            return {fullOverwrite, fullRemove, halfOverwrite, halfRemove:decorations(), text:body.textContent};
+        }""")
+        def values(state):
+            return [item["value"] for item in result[state]]
+
+        full_overwrite = values("fullOverwrite")
+        self.assertIn("254, 240, 138", full_overwrite[0])
+        self.assertIn("125, 211, 252", full_overwrite[1])
+        self.assertIn("125, 211, 252", full_overwrite[2])
+        self.assertIn("254, 240, 138", full_overwrite[3])
+        full_remove = values("fullRemove")
+        self.assertEqual(full_remove[1], "none")
+        self.assertIn("125, 211, 252", full_remove[2])
+        half_overwrite = values("halfOverwrite")
+        self.assertIn("254, 240, 138", half_overwrite[0])
+        self.assertIn("125, 211, 252", half_overwrite[1])
+        self.assertIn("125, 211, 252", half_overwrite[2])
+        self.assertIn("254, 240, 138", half_overwrite[3])
+        half_remove = values("halfRemove")
+        self.assertEqual(half_remove[1], "none")
+        self.assertIn("125, 211, 252", half_remove[2])
+        self.assertEqual(result["text"], "ABCDE")
+
+    def test_marker_palette_only_selects_color_until_marker_button_is_pressed(self):
+        result = self.page.evaluate("""() => {
+            const body = document.createElement('div');
+            body.dataset.insertedComponent = 'body';
+            body.contentEditable = 'true';
+            body.textContent = 'パレット操作';
+            elements.preview.replaceChildren(body);
+            const selectContents = (target) => {
+              const range = document.createRange();
+              range.selectNodeContents(target);
+              const selection = getSelection();
+              selection.removeAllRanges();
+              selection.addRange(range);
+              savedPreviewRange = range.cloneRange();
+            };
+            const marker = () => [...body.querySelectorAll('span, font, mark')].find((element) => {
+              const color = element.style.backgroundColor;
+              return color && color !== 'transparent' && color !== 'rgba(0, 0, 0, 0)';
+            });
+            const markerButton = document.querySelector('#selectionHighlightButton');
+            const colorButton = document.querySelector('#selectionHighlightColorButton');
+            const swatches = [...document.querySelectorAll('#selectionHighlightPalette [data-marker-color]')];
+            const colorInput = document.querySelector('#selectionHighlightColor');
+
+            selectContents(body);
+            colorButton.click();
+            const afterPaletteButton = !marker();
+            swatches[0].click();
+            const afterSwatch = !marker();
+            colorInput.value = '#7dd3fc';
+            colorInput.dispatchEvent(new Event('input', {bubbles:true}));
+            colorInput.dispatchEvent(new Event('change', {bubbles:true}));
+            const afterCustomColor = !marker();
+            markerButton.click();
+            const appliedColor = marker()?.style.backgroundColor;
+
+            selectContents(marker());
+            swatches[1].click();
+            const beforeOverwrite = marker()?.style.backgroundColor;
+            markerButton.click();
+            const overwrittenMarker = marker();
+            const overwrittenColor = overwrittenMarker?.style.backgroundColor;
+            selectContents(overwrittenMarker);
+            markerButton.click();
+            return {
+              afterPaletteButton,
+              afterSwatch,
+              afterCustomColor,
+              appliedColor,
+              beforeOverwrite,
+              overwrittenColor,
+              removed:!marker(),
+              transparentSwatches:document.querySelectorAll('#selectionHighlightPalette .is-transparent').length
+            };
+        }""")
+        self.assertTrue(result["afterPaletteButton"])
+        self.assertTrue(result["afterSwatch"])
+        self.assertTrue(result["afterCustomColor"])
+        self.assertIn("125, 211, 252", result["appliedColor"])
+        self.assertEqual(result["beforeOverwrite"], result["appliedColor"])
+        self.assertNotEqual(result["overwrittenColor"], result["appliedColor"])
+        self.assertTrue(result["removed"])
+        self.assertEqual(result["transparentSwatches"], 0)
 
     def test_deleting_text_across_table_cells_preserves_table_structure(self):
         self.page.evaluate("""() => {
