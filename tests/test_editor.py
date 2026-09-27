@@ -155,18 +155,24 @@ class EditorTests(unittest.TestCase):
             setDocumentBlockControls(plain);
             const activePadding = getComputedStyle(plain).paddingLeft;
             const outlineOffset = getComputedStyle(plain).outlineOffset;
+            const previewPaddingLeft = getComputedStyle(elements.preview).paddingLeft;
+            const previewPaddingRight = getComputedStyle(elements.preview).paddingRight;
             const saved = document.createElement('div');
             saved.innerHTML = getPersistablePreviewHtml();
             const restoredPlain = saved.querySelector('[data-inserted-component="body"]');
             return {
               activePadding,
               outlineOffset,
+              previewPaddingLeft,
+              previewPaddingRight,
               savedClass:restoredPlain.className,
               savedInlinePadding:restoredPlain.style.paddingLeft
             };
         }""")
         self.assertEqual(result['activePadding'], '0px')
         self.assertEqual(result['outlineOffset'], '6px')
+        self.assertEqual(result['previewPaddingLeft'], '2px')
+        self.assertEqual(result['previewPaddingRight'], '2px')
         self.assertEqual(result['savedClass'], '')
         self.assertEqual(result['savedInlinePadding'], '')
 
