@@ -5844,6 +5844,7 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
               <button class="secondary" id="selectionAlignCenterButton" type="button" title="中央揃えにする">中</button>
               <button class="secondary" id="selectionAlignRightButton" type="button" title="右揃えにする">右</button>
               <button class="secondary" id="selectionResetButton" type="button" title="選択範囲の文字装飾をすべて解除する">装飾リセット</button>
+              <button class="secondary" id="selectionDeleteLineButton" type="button" title="カーソルがある行を削除する">行を削除</button>
               <button class="secondary" id="selectionLinkButton" type="button" title="選択範囲にリンクURLを設定する">リンク</button>
               <button class="secondary" id="selectionUnlinkButton" type="button" title="選択範囲のリンクを解除する">リンク解除</button>
               <input id="selectionLinkUrl" type="url" placeholder="リンクURL" title="選択文字に設定するURL">
@@ -6980,7 +6981,7 @@ ${caption ? `\n<div style="${bodyStyle}font-size:0.92em;color:#667085;margin-top
       }
 
       if (pattern === "doubleLine") {
-        return `background:#ffffff;border-top:4px solid ${mainColor};border-bottom:4px solid ${subColor};padding:10px 18px;border-radius:${radius}px;color:${headingColor};`;
+        return `background:#ffffff;border-top:2px solid ${mainColor};border-bottom:2px solid ${mainColor};padding:10px 18px;border-radius:${radius}px;color:${headingColor};`;
       }
 
       if (pattern === "marker") {
@@ -9140,6 +9141,113 @@ ${bodyHtml}
       selection.addRange(range);
       capturePreviewEdits();
       return true;
+    }
+
+    function deleteLineAtPreviewCaret() {
+      const selection = window.getSelection();
+      const range = savedPreviewRange && elements.preview.contains(savedPreviewRange.commonAncestorContainer)
+        ? savedPreviewRange.cloneRange()
+        : selection.rangeCount && elements.preview.contains(selection.getRangeAt(0).commonAncestorContainer)
+          ? selection.getRangeAt(0).cloneRange() : null;
+      if (!range || !range.collapsed) {
+        setStatus("削除する行にカーソルを置いてください");
+        return false;
+      }
+      const nodeElement = range.startContainer.nodeType === Node.ELEMENT_NODE
+        ? range.startContainer : range.startContainer.parentElement;
+      const structuredEditor = nodeElement?.closest?.("td,th,li,[data-code-content],[data-heading-content]");
+      const component = nodeElement?.closest?.("[data-inserted-component]");
+      if (structuredEditor || (component && component.dataset.insertedComponent !== "body")) {
+        setStatus("このパーツ内の行は対象外です。パーツ側の削除機能を使用してください");
+        return false;
+      }
+      const container = component?.dataset.insertedComponent === "body" ? component : elements.preview;
+      if (!container.contains(range.startContainer) && range.startContainer !== container) {
+        setStatus("削除する行にカーソルを置いてください");
+        return false;
+      }
+      const finishLineDeletion = (requestedOffset) => {
+        let caretContainer = container;
+        let caretOffset = requestedOffset;
+        const bodyBecameEmpty = container !== elements.preview
+          && !/[^\s\u200b-\u200d\ufeff]/u.test(container.textContent || "")
+          && !container.querySelector("img,video,audio,iframe,hr,table,ul,ol,[data-inserted-component]");
+        const topLevelComponents = elements.preview.querySelectorAll(":scope > [data-inserted-component]");
+        if (bodyBecameEmpty && container.parentElement === elements.preview && topLevelComponents.length > 1) {
+          caretOffset = Array.from(elements.preview.childNodes).indexOf(container);
+          container.remove();
+          caretContainer = elements.preview;
+          if (activeInsertedComponent === container) activeInsertedComponent = null;
+        } else {
+          maintainEmptyEditableRegions(container);
+        }
+        caretOffset = Math.max(0, Math.min(caretOffset, caretContainer.childNodes.length));
+        const nextRange = document.createRange();
+        nextRange.setStart(caretContainer, caretOffset);
+        nextRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(nextRange);
+        savedPreviewRange = nextRange.cloneRange();
+        capturePreviewEdits();
+        setStatus("カーソル位置の行を削除しました（戻すで復元できます）");
+        return true;
+      };
+
+      let directNode = range.startContainer === container ? null : range.startContainer;
+      while (directNode?.parentNode && directNode.parentNode !== container) directNode = directNode.parentNode;
+      if (directNode instanceof HTMLElement
+        && !directNode.hasAttribute("data-inserted-component")
+        && ["DIV", "P"].includes(directNode.tagName)
+        && !directNode.querySelector("[data-inserted-component]")) {
+        const caretOffset = Array.from(container.childNodes).indexOf(directNode);
+        directNode.remove();
+        return finishLineDeletion(caretOffset);
+      }
+
+      const nodes = Array.from(container.childNodes);
+      let position;
+      if (range.startContainer === container) {
+        position = Math.max(0, Math.min(range.startOffset, nodes.length));
+      } else {
+        const directIndex = nodes.indexOf(directNode);
+        if (directIndex < 0) {
+          setStatus("この位置の行は削除できませんでした");
+          return false;
+        }
+        position = directIndex;
+      }
+      const isBoundary = (node) => node?.nodeType === Node.COMMENT_NODE
+        || node?.nodeName === "BR"
+        || (node instanceof HTMLElement && node.hasAttribute("data-inserted-component"));
+      let previousBoundary = -1;
+      for (let index = position - 1; index >= 0; index -= 1) {
+        if (isBoundary(nodes[index])) {
+          previousBoundary = index;
+          break;
+        }
+      }
+      let nextBoundary = nodes.length;
+      for (let index = position; index < nodes.length; index += 1) {
+        if (isBoundary(nodes[index])) {
+          nextBoundary = index;
+          break;
+        }
+      }
+      let startIndex = previousBoundary + 1;
+      let endIndex = nextBoundary;
+      if (nextBoundary < nodes.length && nodes[nextBoundary].nodeName === "BR") {
+        endIndex = nextBoundary + 1;
+      } else if (startIndex === endIndex
+        && previousBoundary >= 0 && nodes[previousBoundary].nodeName === "BR") {
+        startIndex = previousBoundary;
+      }
+      const removable = nodes.slice(startIndex, endIndex).filter((node) => !isBoundary(node) || node.nodeName === "BR");
+      if (!removable.length || removable.some((node) => node instanceof HTMLElement && node.hasAttribute("data-inserted-component"))) {
+        setStatus("この位置に削除できる行がありません");
+        return false;
+      }
+      removable.forEach((node) => node.remove());
+      return finishLineDeletion(startIndex);
     }
 
     function placeCaretAtStart(element) {
@@ -17316,6 +17424,8 @@ ${bodyHtml}
       applySelectionAlignment("right");
     });
     document.querySelector("#selectionResetButton").addEventListener("click", resetSelectionFormatting);
+    document.querySelector("#selectionDeleteLineButton")?.addEventListener("mousedown", (event) => event.preventDefault());
+    document.querySelector("#selectionDeleteLineButton")?.addEventListener("click", deleteLineAtPreviewCaret);
     document.querySelector("#selectionUnlinkButton").addEventListener("click", () => {
       applySelectionFormat("unlink");
     });
@@ -20051,6 +20161,7 @@ ${bodyHtml}
         "#selectionToHeadingButton",
         "#selectionToBodyButton",
         "#selectionToAccordionButton",
+        "#selectionDeleteLineButton",
         ".component-clipboard-actions",
         ".selection-body-merge-actions",
         ".component-insert-row"
@@ -20116,6 +20227,7 @@ ${bodyHtml}
         "#previewComponentMoveUp",
         "#previewComponentMoveDown",
         "#previewComponentDeleteButton",
+        "#selectionDeleteLineButton",
         ".selection-body-merge-actions"
       ].forEach((selector) => {
         const control = selectionControls.querySelector(selector) || insertContent.querySelector(selector);

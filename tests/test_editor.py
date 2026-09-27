@@ -170,6 +170,100 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result['savedClass'], '')
         self.assertEqual(result['savedInlinePadding'], '')
 
+    def test_double_line_heading_uses_two_thin_lines_in_same_color(self):
+        result = self.page.evaluate("""() => {
+            const heading = document.createElement('div');
+            heading.style.cssText = getHeadingStyle('doubleLine', '#123456', '#abcdef', 8, '#172033');
+            document.body.append(heading);
+            const style = getComputedStyle(heading);
+            const state = {
+              topWidth:style.borderTopWidth,
+              bottomWidth:style.borderBottomWidth,
+              topColor:style.borderTopColor,
+              bottomColor:style.borderBottomColor
+            };
+            heading.remove();
+            return state;
+        }""")
+        self.assertEqual(result['topWidth'], '2px')
+        self.assertEqual(result['bottomWidth'], '2px')
+        self.assertEqual(result['topColor'], 'rgb(18, 52, 86)')
+        self.assertEqual(result['bottomColor'], result['topColor'])
+
+    def test_delete_line_button_removes_caret_line_without_deleting_components(self):
+        result = self.page.evaluate("""() => {
+            const setCaret = (container, offset) => {
+              const range = document.createRange();
+              range.setStart(container, offset);
+              range.collapse(true);
+              const selection = getSelection();
+              selection.removeAllRanges();
+              selection.addRange(range);
+              savedPreviewRange = range.cloneRange();
+            };
+            const button = document.querySelector('#selectionDeleteLineButton');
+
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedComponentHtml('note') + insertedComponentHtml('quote');
+            const note = holder.children[0];
+            const quote = holder.children[1];
+            elements.preview.replaceChildren(note, document.createElement('br'), quote);
+            setCaret(elements.preview, 2);
+            button.click();
+            const betweenParts = {
+              components:[...elements.preview.children].map(item => item.dataset.insertedComponent),
+              breaks:elements.preview.querySelectorAll(':scope > br').length
+            };
+
+            const body = document.createElement('div');
+            body.dataset.insertedComponent = 'body';
+            body.innerHTML = '一行目<br>削除行<br>三行目';
+            applyDocumentBlockAppearance(body, {...readDocumentBlockSettings('body'), includeCard:false});
+            elements.preview.replaceChildren(body);
+            const targetText = [...body.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.nodeValue === '削除行');
+            setCaret(targetText, 2);
+            button.click();
+            const bodyState = {text:body.innerText, breaks:body.querySelectorAll(':scope > br').length};
+
+            const emptyBody = document.createElement('div');
+            emptyBody.dataset.insertedComponent = 'body';
+            emptyBody.append(document.createElement('br'));
+            applyDocumentBlockAppearance(emptyBody, {...readDocumentBlockSettings('body'), includeCard:false});
+            const secondNoteHolder = document.createElement('div');
+            secondNoteHolder.innerHTML = insertedComponentHtml('note') + insertedComponentHtml('quote');
+            const secondNote = secondNoteHolder.children[0];
+            const secondQuote = secondNoteHolder.children[1];
+            elements.preview.replaceChildren(secondNote, emptyBody, secondQuote);
+            setCaret(emptyBody, 0);
+            button.click();
+            const emptyBodyRemoved = !emptyBody.isConnected;
+
+            const protectedNoteHolder = document.createElement('div');
+            protectedNoteHolder.innerHTML = insertedComponentHtml('note');
+            const protectedNote = protectedNoteHolder.firstElementChild;
+            elements.preview.replaceChildren(protectedNote);
+            const original = protectedNote.textContent;
+            setCaret(protectedNote.firstChild, 1);
+            button.click();
+            return {
+              buttonInEditRow:!!button.closest('.component-edit-row'),
+              betweenParts,
+              bodyState,
+              emptyBodyRemoved,
+              protectedText:protectedNote.textContent,
+              original,
+              status:elements.status.textContent
+            };
+        }""")
+        self.assertTrue(result['buttonInEditRow'])
+        self.assertEqual(result['betweenParts']['components'], ['note', 'quote'])
+        self.assertEqual(result['betweenParts']['breaks'], 0)
+        self.assertEqual(result['bodyState']['text'], '一行目\n三行目')
+        self.assertEqual(result['bodyState']['breaks'], 1)
+        self.assertTrue(result['emptyBodyRemoved'])
+        self.assertEqual(result['protectedText'], result['original'])
+        self.assertIn('対象外', result['status'])
+
     def test_header_shows_automatic_last_updated_date(self):
         result = self.page.evaluate("""() => {
             const label = document.querySelector('#lastUpdated');
