@@ -196,6 +196,84 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result['topColor'], 'rgb(18, 52, 86)')
         self.assertEqual(result['bottomColor'], result['topColor'])
 
+    def test_text_link_can_open_in_new_tab_from_toolbar_checkbox(self):
+        result = self.page.evaluate("""() => {
+            const body = document.createElement('div');
+            body.dataset.insertedComponent = 'body';
+            body.textContent = 'リンク文字';
+            applyDocumentBlockAppearance(body, {...readDocumentBlockSettings('body'), includeCard:false});
+            elements.preview.replaceChildren(body);
+            const selectBodyText = () => {
+              const text = body.firstChild;
+              const range = document.createRange();
+              range.selectNodeContents(text);
+              const selection = getSelection();
+              selection.removeAllRanges();
+              selection.addRange(range);
+              savedPreviewRange = range.cloneRange();
+            };
+            const url = document.querySelector('#selectionLinkUrl');
+            const checkbox = document.querySelector('#selectionLinkNewTab');
+            const label = checkbox.closest('label');
+            const unlink = document.querySelector('#selectionUnlinkButton');
+            selectBodyText();
+            url.value = 'https://example.com/new-tab';
+            checkbox.checked = true;
+            document.querySelector('#selectionLinkButton').click();
+            const link = body.querySelector('a');
+            const enabled = {target:link.target, rel:link.rel};
+
+            const caret = document.createRange();
+            caret.setStart(link.firstChild, 1);
+            caret.collapse(true);
+            getSelection().removeAllRanges();
+            getSelection().addRange(caret);
+            document.dispatchEvent(new Event('selectionchange'));
+            const reflected = checkbox.checked;
+
+            checkbox.checked = true;
+            const plainText = document.createTextNode(' 通常本文');
+            body.append(plainText);
+            const plainCaret = document.createRange();
+            plainCaret.setStart(plainText, 2);
+            plainCaret.collapse(true);
+            getSelection().removeAllRanges();
+            getSelection().addRange(plainCaret);
+            document.dispatchEvent(new Event('selectionchange'));
+            const retainedOnPlainText = checkbox.checked;
+
+            const linkRange = document.createRange();
+            linkRange.selectNodeContents(link);
+            getSelection().removeAllRanges();
+            getSelection().addRange(linkRange);
+            savedPreviewRange = linkRange.cloneRange();
+            checkbox.checked = false;
+            url.value = 'https://example.com/same-tab';
+            document.querySelector('#selectionLinkButton').click();
+            const updated = body.querySelector('a');
+            const output = document.createElement('div');
+            output.innerHTML = getPersistablePreviewHtml();
+            return {
+              label:label.textContent.trim(),
+              immediatelyBeforeUnlink:label.nextElementSibling === unlink,
+              enabled,
+              reflected,
+              retainedOnPlainText,
+              disabledTarget:updated.getAttribute('target'),
+              outputTarget:output.querySelector('a').getAttribute('target'),
+              href:updated.getAttribute('href')
+            };
+        }""")
+        self.assertEqual(result['label'], 'タブ化')
+        self.assertTrue(result['immediatelyBeforeUnlink'])
+        self.assertEqual(result['enabled']['target'], '_blank')
+        self.assertIn('noopener', result['enabled']['rel'])
+        self.assertTrue(result['reflected'])
+        self.assertTrue(result['retainedOnPlainText'])
+        self.assertIsNone(result['disabledTarget'])
+        self.assertIsNone(result['outputTarget'])
+        self.assertEqual(result['href'], 'https://example.com/same-tab')
+
     def test_delete_line_button_removes_caret_line_without_deleting_components(self):
         result = self.page.evaluate("""() => {
             const setCaret = (container, offset) => {
@@ -2128,7 +2206,11 @@ class EditorTests(unittest.TestCase):
             const holder = document.createElement('div');
             holder.innerHTML = insertedComponentHtml('toc');
             const toc = holder.firstElementChild;
-            elements.preview.replaceChildren(toc, makeHeading('見出しA'), makeHeading('見出しB'));
+            const headingA = makeHeading('見出しA');
+            const headingB = makeHeading('見出しB');
+            headingA.querySelector('[data-heading-content]').innerHTML = '見出し<span style="color:#c2410c">A</span> ';
+            headingB.querySelector('[data-heading-content]').innerHTML = '見出し<span style="color:#2563eb"><strong>B</strong></span>';
+            elements.preview.replaceChildren(toc, headingA, headingB);
             refreshTocComponent(toc);
             activeInsertedComponent = toc;
             const properties = document.querySelector('.inserted-component-properties');
@@ -2143,12 +2225,14 @@ class EditorTests(unittest.TestCase):
               count: links.length,
               hrefs: links.map(link => link.getAttribute('href')),
               labels: links.map(link => link.textContent),
+              colors: links.map(link => link.style.color),
               headingDisplay: elements.preview.querySelector('[data-inserted-component="heading"] h2').style.display
             };
             const outputHolder = document.createElement('div');
             outputHolder.innerHTML = formatOutputHtml(getPersistablePreviewHtml());
             enabled.outputLinks = Array.from(outputHolder.querySelectorAll(`a[href="#${toc.id}"]`)).length;
             enabled.outputEditorMarkers = outputHolder.querySelectorAll('[data-toc-back-link]').length;
+            enabled.outputColors = Array.from(outputHolder.querySelectorAll('[data-toc-back-link]')).map(link => link.style.color);
 
             flag.checked = false;
             flag.dispatchEvent(new Event('change', {bubbles: true}));
@@ -2167,9 +2251,11 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["enabled"]["count"], 2)
         self.assertEqual(result["enabled"]["hrefs"], [f'#{result["enabled"]["tocId"]}'] * 2)
         self.assertEqual(result["enabled"]["labels"], ["↑ 目次", "↑ 目次"])
+        self.assertEqual(result["enabled"]["colors"], ["rgb(194, 65, 12)", "rgb(37, 99, 235)"])
         self.assertEqual(result["enabled"]["headingDisplay"], "flex")
         self.assertEqual(result["enabled"]["outputLinks"], 2)
         self.assertEqual(result["enabled"]["outputEditorMarkers"], 2)
+        self.assertEqual(result["enabled"]["outputColors"], ["rgb(194, 65, 12)", "rgb(37, 99, 235)"])
         self.assertEqual(result["disabledCount"], 0)
         self.assertEqual(result["disabledDisplay"], "")
         self.assertEqual(result["afterTocRemoval"], 0)

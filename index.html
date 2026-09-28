@@ -694,6 +694,26 @@
       overflow-x: auto;
     }
 
+    .selection-link-new-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      width: auto;
+      margin: 0;
+      color: #475467;
+      font-size: 0.8rem;
+      font-weight: 700;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .selection-link-new-tab input {
+      width: 15px;
+      height: 15px;
+      margin: 0;
+      accent-color: var(--accent);
+    }
+
     .component-insert-row {
       display: flex;
       align-items: center;
@@ -5848,6 +5868,7 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
               <button class="secondary" id="selectionResetButton" type="button" title="選択範囲の文字装飾をすべて解除する">装飾リセット</button>
               <button class="secondary" id="selectionDeleteLineButton" type="button" title="カーソルがある行を削除する">行を削除</button>
               <button class="secondary" id="selectionLinkButton" type="button" title="選択範囲にリンクURLを設定する">リンク</button>
+              <label class="selection-link-new-tab" for="selectionLinkNewTab" title="リンクを新しいタブで開く"><span>タブ化</span><input id="selectionLinkNewTab" type="checkbox"></label>
               <button class="secondary" id="selectionUnlinkButton" type="button" title="選択範囲のリンクを解除する">リンク解除</button>
               <input id="selectionLinkUrl" type="url" placeholder="リンクURL" title="選択文字に設定するURL">
             </div>
@@ -9797,6 +9818,24 @@ ${bodyHtml}
 
       document.execCommand("styleWithCSS", false, true);
       document.execCommand(command, false, value);
+      if (command === "createLink") {
+        const selectedRange = selection.rangeCount ? selection.getRangeAt(0) : null;
+        Array.from(elements.preview.querySelectorAll("a[href]")).forEach((link) => {
+          if (!selectedRange) return;
+          try {
+            if (!selectedRange.intersectsNode(link)) return;
+          } catch {
+            return;
+          }
+          if (options.openInNewTab) {
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+          } else {
+            link.removeAttribute("target");
+            link.removeAttribute("rel");
+          }
+        });
+      }
       if (command === "italic") {
         elements.preview.querySelectorAll("span[style]").forEach((span) => {
           if (span.style.fontStyle === "italic") {
@@ -10445,10 +10484,11 @@ ${bodyHtml}
       }
       const alignGroup = document.querySelector(".selection-align-group");
       const selectionLinkButton = document.querySelector("#selectionLinkButton");
+      const selectionLinkNewTab = document.querySelector(".selection-link-new-tab");
       const selectionUnlinkButton = document.querySelector("#selectionUnlinkButton");
       const selectionLinkUrl = document.querySelector("#selectionLinkUrl");
       if (alignGroup) {
-        [selectionLinkButton, selectionUnlinkButton, selectionLinkUrl]
+        [selectionLinkButton, selectionLinkNewTab, selectionUnlinkButton, selectionLinkUrl]
           .filter(Boolean)
           .forEach((control) => alignGroup.appendChild(control));
       }
@@ -11415,6 +11455,7 @@ ${bodyHtml}
       const selection = window.getSelection();
       if (selection.rangeCount && elements.preview.contains(selection.anchorNode)) {
         savedPreviewRange = selection.getRangeAt(0).cloneRange();
+        syncSelectionLinkTargetControl(selection.getRangeAt(0));
         updateInsertionAvailability();
       }
     });
@@ -16367,6 +16408,26 @@ ${bodyHtml}
       const headings = Array.from(root.querySelectorAll(
         '[data-inserted-component="heading"] h2, [data-inserted-component="heading"] h3, [data-inserted-component="heading"] h4'
       ));
+      const resolveHeadingTextColor = (element) => {
+        if (!element) return "";
+        if (element.isConnected) return getComputedStyle(element).color;
+        for (let current = element; current; current = current.parentElement) {
+          const color = current.style.color || (current.tagName === "FONT" ? current.getAttribute("color") : "");
+          if (color && !["inherit", "unset", "currentcolor"].includes(color.toLowerCase())) return color;
+        }
+        return "";
+      };
+      const lastHeadingTextElement = (heading, content) => {
+        const textWalker = document.createTreeWalker(content || heading, NodeFilter.SHOW_TEXT, {
+          acceptNode: (node) => /[^\s\u200b-\u200d\ufeff]/u.test(node.textContent)
+            && !node.parentElement.closest('[data-heading-prefix], [data-toc-heading-number], [data-toc-back-link]')
+            ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
+        });
+        let lastTextNode = null;
+        let textNode;
+        while ((textNode = textWalker.nextNode())) lastTextNode = textNode;
+        return lastTextNode?.parentElement || content || heading;
+      };
       const linkedHeadingIds = (component) => {
         const ids = new Set();
         component?.querySelectorAll('[data-toc-list] a[href^="#"]').forEach((link) => {
@@ -16463,6 +16524,8 @@ ${bodyHtml}
         link.setAttribute("aria-label", "目次に戻る");
         link.title = "目次に戻る";
         link.style.cssText = "display:inline-flex;align-items:center;flex:0 0 auto;margin-left:auto;padding:2px 7px;border:1px solid currentColor;border-radius:999px;color:inherit;font-family:inherit;font-size:11px;font-weight:600;line-height:1.4;text-decoration:none;white-space:nowrap;opacity:.78;";
+        const lastTextColor = resolveHeadingTextColor(lastHeadingTextElement(heading, content));
+        if (lastTextColor) link.style.color = lastTextColor;
         heading.appendChild(link);
       });
     }
@@ -17505,13 +17568,25 @@ ${bodyHtml}
       else performPreviewUndo();
     });
     const selectionLinkUrl = document.querySelector("#selectionLinkUrl");
+    const selectionLinkNewTab = document.querySelector("#selectionLinkNewTab");
+    function syncSelectionLinkTargetControl(range = null) {
+      if (!selectionLinkNewTab) return;
+      const selection = window.getSelection();
+      const selectedRange = range || (selection.rangeCount ? selection.getRangeAt(0) : null);
+      if (!selectedRange || !elements.preview.contains(selectedRange.commonAncestorContainer)) return;
+      const elementForNode = (node) => node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+      const startLink = elementForNode(selectedRange.startContainer)?.closest?.("a[href]");
+      const endLink = elementForNode(selectedRange.endContainer)?.closest?.("a[href]");
+      const selectedLink = startLink && startLink === endLink ? startLink : null;
+      if (selectedLink) selectionLinkNewTab.checked = selectedLink.target === "_blank";
+    }
     const applySelectionLink = () => {
       const url = normalizeLinkUrl(selectionLinkUrl.value);
       if (!url) {
         setStatus("有効なリンクURLを入力してください");
         return;
       }
-      applySelectionFormat("createLink", url);
+      applySelectionFormat("createLink", url, { openInNewTab: selectionLinkNewTab.checked });
       selectionLinkUrl.value = "";
     };
     document.querySelector("#selectionLinkButton").addEventListener("click", applySelectionLink);
