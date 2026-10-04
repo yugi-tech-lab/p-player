@@ -52,13 +52,14 @@ class HeadingImportTests(unittest.TestCase):
                   for (let i = 0; i < 3; i++) {
                     importArticleHtml(html);
                     const heading = elements.preview.querySelector('h2');
+                    const headingBlock = heading.closest('[data-inserted-component="heading"]');
                     const content = heading.querySelector('[data-heading-content]');
                     content.querySelector('b').textContent = 'Edited';
                     content.dispatchEvent(new Event('input', {bubbles:true}));
                     capturePreviewEdits();
                     states.push({
                       invalid:findInvalidNestedStructure()?.message || null,
-                      links:heading.querySelectorAll('a[href="#p-player-toc"]').length,
+                      links:headingBlock.querySelectorAll(':scope > a[href="#p-player-toc"]').length,
                       nestedLinks:content.querySelectorAll('a').length,
                       title:content.textContent.replace(/\\s+/g, ' ').trim(),
                       prefix:heading.querySelector('[data-heading-prefix]').textContent.trim(),
@@ -71,7 +72,7 @@ class HeadingImportTests(unittest.TestCase):
                   }
                   elements.preview.querySelector('nav').dataset.tocBackLinks = 'false';
                   capturePreviewEdits();
-                  return {states, disabled:elements.preview.querySelectorAll('h2 a').length};
+                  return {states, disabled:elements.preview.querySelectorAll('[data-inserted-component="heading"] > a').length};
                 }''', legacy)
                 for state in result['states']:
                     self.assertEqual(state, dict(invalid=None, links=1, nestedLinks=0,

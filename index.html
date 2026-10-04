@@ -5529,6 +5529,11 @@
           </div>
         </div>
 
+        <div class="field">
+          <label class="check-item"><input id="headingExcludeFromToc" type="checkbox">目次に含めない</label>
+          <small class="help-text">P-Playerの目次とProtoPedia右側の目次の両方から除外します。</small>
+        </div>
+
         <div class="field heading-reset-settings">
           <label class="check-item"><input id="resetHeadingOnChange" type="checkbox">見出し設定変更時にプレビューをリセット</label>
         </div>
@@ -6269,6 +6274,7 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
       resetHeadingOnChange: false,
       resetBodyOnChange: false,
       headingGap: "0",
+      headingExcludeFromToc: false,
       cardGap: "10",
       cardBottomGap: "10",
       includeHeading: true,
@@ -6380,6 +6386,7 @@ ProtoPediaの記事向けに作りたいパーツを選び、デザインをカ�
       resetHeadingOnChange: document.querySelector("#resetHeadingOnChange"),
       resetBodyOnChange: document.querySelector("#resetBodyOnChange"),
       headingGap: document.querySelector("#headingGap"),
+      headingExcludeFromToc: document.querySelector("#headingExcludeFromToc"),
       cardGap: document.querySelector("#cardGap"),
       cardBottomGap: document.querySelector("#cardBottomGap"),
       includeHeading: document.querySelector("#includeHeading"),
@@ -7805,6 +7812,20 @@ ${bodyHtml}
         element.classList.remove("image-load-error");
         if (!element.className) element.removeAttribute("class");
       });
+      // ProtoPedia creates its sidebar TOC from semantic heading elements.
+      // Keep the visual heading design but export opted-out headings as divs.
+      outputHolder.querySelectorAll('[data-inserted-component="heading"]').forEach((block) => {
+        if (!headingIsExcludedFromToc(block)) return;
+        const heading = block.querySelector(':scope > h2, :scope > h3, :scope > h4');
+        if (!heading) return;
+        const replacement = outputHolder.ownerDocument.createElement('div');
+        Array.from(heading.attributes).forEach((attribute) => {
+          if (attribute.name !== 'id') replacement.setAttribute(attribute.name, attribute.value);
+        });
+        replacement.dataset.headingNonToc = 'true';
+        replacement.append(...Array.from(heading.childNodes));
+        heading.replaceWith(replacement);
+      });
       html = sanitizeArticleMarkup(outputHolder.innerHTML);
       if (outputHolder.querySelector('blockquote.twitter-tweet,blockquote.twitter-video')) {
         html += '<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"><\/script>';
@@ -7984,7 +8005,7 @@ ${bodyHtml}
       heading: [
         "pattern", "headingIcon", "headingShadow", "radius", "mainColor", "mainColorText",
         "subColor", "subColorText", "headingSize", "headingColor", "headingColorText",
-        "headingWeight", "headingFont", "headingGap"
+        "headingWeight", "headingFont", "headingGap", "headingExcludeFromToc"
       ],
       body: [
         "includeCard", "cardPattern", "cardMainColor", "cardMainColorText", "cardSubColor", "cardSubColorText",
@@ -8012,6 +8033,12 @@ ${bodyHtml}
       } catch {
         return {};
       }
+    }
+
+    function headingIsExcludedFromToc(block) {
+      if (block?.dataset?.insertedComponent !== "heading") return false;
+      const value = parseDocumentBlockSettings(block).headingExcludeFromToc;
+      return value === true || value === "true";
     }
 
     function writeDocumentBlockSettings(block, settings) {
@@ -8130,6 +8157,15 @@ ${bodyHtml}
 
     function ensureHeadingBlockStructure(block) {
       let heading = block.querySelector(":scope > h2, :scope > h3, :scope > h4") || block.querySelector("h2, h3, h4");
+      const exportedNonTocHeading = block.querySelector(":scope > [data-heading-non-toc]");
+      if (!heading && exportedNonTocHeading) {
+        heading = document.createElement("h2");
+        Array.from(exportedNonTocHeading.attributes).forEach((attribute) => {
+          if (attribute.name !== "data-heading-non-toc") heading.setAttribute(attribute.name, attribute.value);
+        });
+        heading.append(...Array.from(exportedNonTocHeading.childNodes));
+        exportedNonTocHeading.replaceWith(heading);
+      }
       if (!heading) {
         heading = document.createElement("h2");
         heading.textContent = "新しい見出し";
@@ -8137,14 +8173,14 @@ ${bodyHtml}
       }
       // Older exports omitted the back-link marker. Recover only the editor's
       // labelled TOC links, including links swallowed by a previous import.
-      heading.querySelectorAll('a[href^="#"]').forEach((link) => {
+      block.querySelectorAll(':scope > a[href^="#"], h2 a[href^="#"], h3 a[href^="#"], h4 a[href^="#"]').forEach((link) => {
         if (link.hasAttribute('data-toc-back-link')) return;
         if (link.getAttribute('aria-label') !== '目次に戻る' || link.title !== '目次に戻る') return;
         link.dataset.tocBackLink = 'true';
       });
       heading.querySelectorAll('[data-toc-back-link]').forEach((link) => {
-        heading.appendChild(link);
-        heading.dataset.tocBackLayout = 'true';
+        heading.after(link);
+        block.dataset.tocBackLayout = 'true';
       });
       const legacyPrefix = heading.querySelector(':scope > span[aria-hidden="true"]');
       if (legacyPrefix && !heading.querySelector(':scope > [data-heading-prefix]')) {
@@ -8277,7 +8313,11 @@ ${bodyHtml}
     function setDocumentControlsFromSettings(type, settings) {
       (documentBlockPropertyIds[type] || []).forEach((id) => {
         const control = document.querySelector(`#${CSS.escape(id)}`);
-        if (!control || !(id in settings)) return;
+        if (!control) return;
+        if (!(id in settings)) {
+          if (id === "headingExcludeFromToc") control.checked = false;
+          return;
+        }
         if (control.type === "checkbox") control.checked = Boolean(settings[id]);
         else control.value = settings[id];
       });
@@ -8315,6 +8355,9 @@ ${bodyHtml}
             ...parseDocumentBlockSettings(target),
             ...JSON.parse(JSON.stringify(preset.settings))
           };
+          if (type === "heading") {
+            settings.headingExcludeFromToc = headingIsExcludedFromToc(target);
+          }
           applyDocumentBlockAppearance(target, settings);
         });
         capturePreviewEdits();
@@ -8350,6 +8393,7 @@ ${bodyHtml}
       };
       preset.name = name;
       preset.settings = JSON.parse(JSON.stringify(readDocumentBlockSettings(type)));
+      if (type === "heading") delete preset.settings.headingExcludeFromToc;
       preset.updatedAt = new Date().toISOString();
       if (!existing) presets.push(preset);
       documentCustomPresets[type] = presets;
@@ -11203,7 +11247,10 @@ ${bodyHtml}
           ? Array.from(elements.preview.querySelectorAll('[data-inserted-component="body"]'))
           : selectedType === "body" ? [selectedBlock] : [];
         headingTargets.forEach((target) => {
-          applyDocumentBlockAppearance(target, JSON.parse(JSON.stringify(headingSettings)));
+          applyDocumentBlockAppearance(target, {
+            ...JSON.parse(JSON.stringify(headingSettings)),
+            headingExcludeFromToc: headingIsExcludedFromToc(target)
+          });
         });
         bodyTargets.forEach((target) => {
           applyDocumentBlockAppearance(target, JSON.parse(JSON.stringify(bodySettings)));
@@ -11248,8 +11295,15 @@ ${bodyHtml}
         ? Array.from(elements.preview.querySelectorAll(`[data-inserted-component="${type}"]`))
         : [block];
       targets.forEach((target) => {
-        applyDocumentBlockAppearance(target, JSON.parse(JSON.stringify(settings)));
+        const targetSettings = JSON.parse(JSON.stringify(settings));
+        if (type === "heading" && control.id !== "headingExcludeFromToc" && documentPropertyScope === "all") {
+          targetSettings.headingExcludeFromToc = headingIsExcludedFromToc(target);
+        }
+        applyDocumentBlockAppearance(target, targetSettings);
       });
+      if (type === "heading" && control.id === "headingExcludeFromToc") {
+        elements.preview.querySelectorAll('[data-inserted-component="toc"]').forEach((toc) => refreshTocComponent(toc));
+      }
       capturePreviewEdits();
       setDocumentBlockControls(block);
       const typeLabel = type === "heading" ? "見出し" : "本文";
@@ -16405,8 +16459,11 @@ ${bodyHtml}
       if (!root?.querySelectorAll) return;
       const tocComponents = Array.from(root.querySelectorAll('[data-inserted-component="toc"]'));
       const activeToc = tocComponents.find((component) => component.dataset.tocBackLinks === "true") || null;
-      const headings = Array.from(root.querySelectorAll(
+      const allHeadings = Array.from(root.querySelectorAll(
         '[data-inserted-component="heading"] h2, [data-inserted-component="heading"] h3, [data-inserted-component="heading"] h4'
+      ));
+      const headings = allHeadings.filter((heading) => !headingIsExcludedFromToc(
+        heading.closest('[data-inserted-component="heading"]')
       ));
       const resolveHeadingTextColor = (element) => {
         if (!element) return "";
@@ -16479,19 +16536,32 @@ ${bodyHtml}
         heading.insertBefore(number, content || heading.firstChild);
       });
       const removeBackLink = (heading) => {
+        const block = heading.closest('[data-inserted-component="heading"]');
         heading.querySelectorAll(":scope > [data-toc-back-link]").forEach((link) => link.remove());
-        if (heading.dataset.tocBackLayout !== "true") return;
-        heading.style.removeProperty("display");
-        heading.style.removeProperty("align-items");
-        heading.style.removeProperty("gap");
+        block?.querySelectorAll(":scope > [data-toc-back-link]").forEach((link) => link.remove());
+        // Clean up the old layout, where the link lived inside the h2/h3/h4.
+        if (heading.dataset.tocBackLayout === "true") {
+          heading.style.removeProperty("display");
+          heading.style.removeProperty("align-items");
+          heading.style.removeProperty("gap");
+          delete heading.dataset.tocBackLayout;
+        }
         heading.querySelector(":scope > [data-heading-prefix]")?.style.removeProperty("flex");
         const content = heading.querySelector(":scope > [data-heading-content]");
         content?.style.removeProperty("flex");
         content?.style.removeProperty("min-width");
-        delete heading.dataset.tocBackLayout;
+        heading.style.removeProperty("flex");
+        heading.style.removeProperty("min-width");
+        if (block?.dataset.tocBackLayout !== "true") return;
+        if (block.dataset.tocBackDisplay) block.style.display = block.dataset.tocBackDisplay;
+        else block.style.removeProperty("display");
+        block.style.removeProperty("align-items");
+        block.style.removeProperty("gap");
+        delete block.dataset.tocBackLayout;
+        delete block.dataset.tocBackDisplay;
       };
       if (!activeToc) {
-        headings.forEach(removeBackLink);
+        allHeadings.forEach(removeBackLink);
         return;
       }
       const backLinkedHeadingIds = linkedHeadingIds(activeToc);
@@ -16503,16 +16573,23 @@ ${bodyHtml}
         while (existingIds.has(tocId)) tocId = `p-player-toc-${suffix++}`;
         activeToc.id = tocId;
       }
+      allHeadings.forEach(removeBackLink);
       headings.forEach((heading) => {
-        removeBackLink(heading);
         if (!backLinkedHeadingIds.has(heading.id)) return;
-        const prefix = heading.querySelector(":scope > [data-heading-prefix]");
+        const block = heading.closest('[data-inserted-component="heading"]');
         const content = heading.querySelector(":scope > [data-heading-content]");
-        if (!content) return;
-        heading.dataset.tocBackLayout = "true";
+        if (!block || !content) return;
+        block.dataset.tocBackLayout = "true";
+        block.dataset.tocBackDisplay = block.style.display || "";
+        block.style.display = block.style.display === "inline-block" ? "inline-flex" : "flex";
+        block.style.alignItems = "center";
+        block.style.gap = "8px";
         heading.style.display = "flex";
         heading.style.alignItems = "center";
         heading.style.gap = "8px";
+        heading.style.flex = "1 1 auto";
+        heading.style.minWidth = "0";
+        const prefix = heading.querySelector(":scope > [data-heading-prefix]");
         if (prefix) prefix.style.flex = "0 0 auto";
         content.style.flex = "1 1 auto";
         content.style.minWidth = "0";
@@ -16526,7 +16603,10 @@ ${bodyHtml}
         link.style.cssText = "display:inline-flex;align-items:center;flex:0 0 auto;margin-left:auto;padding:2px 7px;border:1px solid currentColor;border-radius:999px;color:inherit;font-family:inherit;font-size:11px;font-weight:600;line-height:1.4;text-decoration:none;white-space:nowrap;opacity:.78;";
         const lastTextColor = resolveHeadingTextColor(lastHeadingTextElement(heading, content));
         if (lastTextColor) link.style.color = lastTextColor;
-        heading.appendChild(link);
+        // Keep the control outside the semantic heading. ProtoPedia builds its
+        // sidebar TOC from heading.textContent, so a child link becomes part of
+        // the extracted title even when it is visually styled as a button.
+        block.appendChild(link);
       });
     }
 
@@ -16589,7 +16669,8 @@ ${bodyHtml}
     // exported HTML later can add a new heading + TOC entry by copying the
     // pattern and bumping the number, without needing to understand slugs.
     function assignHeadingIds() {
-      const headings = Array.from(elements.preview.querySelectorAll('[data-inserted-component="heading"] h2, [data-inserted-component="heading"] h3, [data-inserted-component="heading"] h4'));
+      const headings = Array.from(elements.preview.querySelectorAll('[data-inserted-component="heading"] h2, [data-inserted-component="heading"] h3, [data-inserted-component="heading"] h4'))
+        .filter((heading) => !headingIsExcludedFromToc(heading.closest('[data-inserted-component="heading"]')));
       const seen = new Set();
       let maxN = 0;
       document.querySelectorAll('[id^="heading-"]').forEach((element) => {
@@ -17021,6 +17102,62 @@ ${bodyHtml}
       return component;
     }
 
+    function markdownStandaloneXPostUrls(token) {
+      if (!["paragraph", "text"].includes(token?.type) || !window.marked?.parse) return [];
+      const holder = document.createElement("div");
+      holder.innerHTML = sanitizeMarkdownHtml(window.marked.parse(token.raw || token.text || "", {
+        gfm: true,
+        breaks: true
+      }));
+      const paragraph = holder.children.length === 1 && holder.firstElementChild?.tagName === "P"
+        ? holder.firstElementChild : null;
+      if (!paragraph) return [];
+      const meaningfulNodes = Array.from(paragraph.childNodes).filter((node) => (
+        node.nodeType !== Node.TEXT_NODE || node.nodeValue.trim()
+      ));
+      const urls = [];
+      let expectLink = true;
+      for (const node of meaningfulNodes) {
+        if (expectLink && node.nodeName === "A") {
+          const url = normalizeLinkUrl(node.getAttribute("href") || "");
+          if (!isXPostUrl(url)) return [];
+          urls.push(url);
+          expectLink = false;
+        } else if (!expectLink && node.nodeName === "BR") {
+          expectLink = true;
+        } else {
+          return [];
+        }
+      }
+      return urls.length && !expectLink ? urls : [];
+    }
+
+    function markdownXPostComponent(url) {
+      const component = markdownComponentFromTemplate("xpost");
+      Object.assign(component.dataset, {
+        embedUrl: url,
+        embedUrl2: "",
+        embedUrl3: "",
+        xpostCount: "1",
+        xpostCaption: "",
+        xpostCaption2: "",
+        xpostCaption3: "",
+        xpostMode: "post",
+        xpostMaxWidth: "55",
+        xpostAlign: "left",
+        xpostSideText: "false",
+        xpostSideContent: "text",
+        xpostSideImageUrl: "",
+        xpostTextSide: "right",
+        xpostTextVerticalAlign: "center",
+        xpostSideTextAlign: "left",
+        xpostSideTextFont: "inherit",
+        xpostSideTextSize: "16",
+        xpostSideTextColor: "#172033"
+      });
+      return component;
+    }
+
     function markdownTokensToComponents(tokens) {
       const result = { blocks: [], truncatedTables: 0 };
       (tokens || []).forEach((token) => {
@@ -17028,6 +17165,11 @@ ${bodyHtml}
         if (token.type === "heading") {
           block = markdownHeadingBlock(token);
         } else if (token.type === "paragraph" || token.type === "text") {
+          const xPostUrls = markdownStandaloneXPostUrls(token);
+          if (xPostUrls.length) {
+            result.blocks.push(...xPostUrls.map(markdownXPostComponent));
+            return;
+          }
           const parsed = window.marked.parse(token.raw || token.text || "", { gfm: true, breaks: true });
           result.blocks.push(...markdownParagraphComponents(parsed));
           return;
@@ -17134,6 +17276,10 @@ ${bodyHtml}
       const fragment = document.createDocumentFragment();
       result.blocks.forEach((block) => fragment.appendChild(block));
       elements.preview.insertBefore(fragment, endComment || null);
+      result.blocks.filter((block) => block.dataset.insertedComponent === "xpost").forEach((component) => {
+        applyXPostLayout(component);
+        renderEmbedComponent(component, { capture: false });
+      });
       activeInsertedComponent = result.blocks[result.blocks.length - 1];
       activePreviewTable = activeInsertedComponent.dataset.insertedComponent === "table"
         ? activeInsertedComponent : null;
@@ -19585,6 +19731,7 @@ ${bodyHtml}
       elements.resetHeadingOnChange.checked = defaults.resetHeadingOnChange;
       elements.resetBodyOnChange.checked = defaults.resetBodyOnChange;
       elements.headingGap.value = defaults.headingGap;
+      elements.headingExcludeFromToc.checked = defaults.headingExcludeFromToc;
       elements.cardGap.value = defaults.cardGap;
       elements.cardBottomGap.value = defaults.cardBottomGap;
       elements.includeHeading.checked = defaults.includeHeading;

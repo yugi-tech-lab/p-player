@@ -2226,18 +2226,20 @@ class EditorTests(unittest.TestCase):
               hrefs: links.map(link => link.getAttribute('href')),
               labels: links.map(link => link.textContent),
               colors: links.map(link => link.style.color),
-              headingDisplay: elements.preview.querySelector('[data-inserted-component="heading"] h2').style.display
+              blockDisplay: elements.preview.querySelector('[data-inserted-component="heading"]').style.display,
+              headingText: elements.preview.querySelector('[data-inserted-component="heading"] h2').textContent
             };
             const outputHolder = document.createElement('div');
             outputHolder.innerHTML = formatOutputHtml(getPersistablePreviewHtml());
             enabled.outputLinks = Array.from(outputHolder.querySelectorAll(`a[href="#${toc.id}"]`)).length;
             enabled.outputEditorMarkers = outputHolder.querySelectorAll('[data-toc-back-link]').length;
             enabled.outputColors = Array.from(outputHolder.querySelectorAll('[data-toc-back-link]')).map(link => link.style.color);
+            enabled.outputHeadingText = outputHolder.querySelector('[data-inserted-component="heading"] h2').textContent;
 
             flag.checked = false;
             flag.dispatchEvent(new Event('change', {bubbles: true}));
             const disabledCount = elements.preview.querySelectorAll('[data-toc-back-link]').length;
-            const disabledDisplay = elements.preview.querySelector('[data-inserted-component="heading"] h2').style.display;
+            const disabledDisplay = elements.preview.querySelector('[data-inserted-component="heading"]').style.display;
 
             flag.checked = true;
             flag.dispatchEvent(new Event('change', {bubbles: true}));
@@ -2252,10 +2254,12 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(result["enabled"]["hrefs"], [f'#{result["enabled"]["tocId"]}'] * 2)
         self.assertEqual(result["enabled"]["labels"], ["↑ 目次", "↑ 目次"])
         self.assertEqual(result["enabled"]["colors"], ["rgb(194, 65, 12)", "rgb(37, 99, 235)"])
-        self.assertEqual(result["enabled"]["headingDisplay"], "flex")
+        self.assertEqual(result["enabled"]["blockDisplay"], "flex")
+        self.assertNotIn("目次", result["enabled"]["headingText"])
         self.assertEqual(result["enabled"]["outputLinks"], 2)
         self.assertEqual(result["enabled"]["outputEditorMarkers"], 2)
         self.assertEqual(result["enabled"]["outputColors"], ["rgb(194, 65, 12)", "rgb(37, 99, 235)"])
+        self.assertNotIn("目次", result["enabled"]["outputHeadingText"])
         self.assertEqual(result["disabledCount"], 0)
         self.assertEqual(result["disabledDisplay"], "")
         self.assertEqual(result["afterTocRemoval"], 0)
@@ -2274,8 +2278,8 @@ class EditorTests(unittest.TestCase):
             const flag = document.querySelector('#tocBackLinks');
             flag.checked = true;
             flag.dispatchEvent(new Event('change', {bubbles:true}));
-            const links = () => [...elements.preview.querySelectorAll('h2')].map(
-              heading => heading.querySelector('[data-toc-back-link]')?.textContent || '');
+            const links = () => [...elements.preview.querySelectorAll('[data-inserted-component="heading"]')].map(
+              block => block.querySelector(':scope > [data-toc-back-link]')?.textContent || '');
             const initial = links();
             const html = formatOutputHtml(getPersistablePreviewHtml());
             importArticleHtml(html);
@@ -2283,6 +2287,75 @@ class EditorTests(unittest.TestCase):
         }""")
         self.assertEqual(result['initial'], ['↑ 目次', '', '↑ 目次'])
         self.assertEqual(result['restored'], ['↑ 目次', '', '↑ 目次'])
+
+    def test_heading_can_be_excluded_from_player_and_protopedia_tocs(self):
+        result = self.page.evaluate("""() => {
+            const makeHeading = (text, excluded = false) => {
+              const fragment = document.createDocumentFragment();
+              fragment.append(text);
+              const block = createDocumentBlockFromFragment('heading', fragment, readDocumentBlockSettings('heading'));
+              if (excluded) {
+                const settings = parseDocumentBlockSettings(block);
+                settings.headingExcludeFromToc = true;
+                applyDocumentBlockAppearance(block, settings);
+              }
+              return block;
+            };
+            const holder = document.createElement('div');
+            holder.innerHTML = insertedComponentHtml('toc');
+            const toc = holder.firstElementChild;
+            toc.dataset.tocBackLinks = 'true';
+            toc.dataset.tocHeadingNumbers = 'true';
+            const alpha = makeHeading('Alpha');
+            const beta = makeHeading('Beta', true);
+            elements.preview.replaceChildren(toc, alpha, beta);
+            refreshTocComponent(toc);
+            syncTocBackLinks(elements.preview);
+            const initial = {
+              tocLabels:[...toc.querySelectorAll('[data-toc-list] a')].map(link => link.textContent),
+              betaBackLinks:beta.querySelectorAll('[data-toc-back-link]').length,
+              betaNumbers:beta.querySelectorAll('[data-toc-heading-number]').length
+            };
+            const html = formatOutputHtml(getPersistablePreviewHtml());
+            const output = document.createElement('div');
+            output.innerHTML = html;
+            initial.outputHeadings = [...output.querySelectorAll('[data-inserted-component="heading"]')]
+              .map(block => ({text:block.textContent.replace(/\\s+/g, ' ').trim(), tag:block.firstElementChild?.tagName,
+                nonToc:block.firstElementChild?.hasAttribute('data-heading-non-toc'),
+                id:block.firstElementChild?.id || ''}));
+
+            importArticleHtml(html);
+            const restored = [...elements.preview.querySelectorAll('[data-inserted-component="heading"]')]
+              .find(block => block.textContent.includes('Beta'));
+            activeInsertedComponent = restored;
+            setDocumentBlockControls(restored);
+            const flag = document.querySelector('#headingExcludeFromToc');
+            const restoredState = {
+              flag:flag.checked,
+              tag:restored.firstElementChild?.tagName,
+              tocLabels:[...elements.preview.querySelectorAll('[data-toc-list] a')].map(link => link.textContent)
+            };
+            flag.checked = false;
+            flag.dispatchEvent(new Event('change', {bubbles:true}));
+            const enabledAgain = {
+              tocLabels:[...elements.preview.querySelectorAll('[data-toc-list] a')].map(link => link.textContent),
+              outputHeadingCount:(() => {
+                const check = document.createElement('div');
+                check.innerHTML = formatOutputHtml(getPersistablePreviewHtml());
+                return check.querySelectorAll('[data-inserted-component="heading"] > h2').length;
+              })()
+            };
+            return {initial, restoredState, enabledAgain};
+        }""")
+        self.assertEqual(result['initial']['tocLabels'], ['Alpha'])
+        self.assertEqual(result['initial']['betaBackLinks'], 0)
+        self.assertEqual(result['initial']['betaNumbers'], 0)
+        self.assertEqual(result['initial']['outputHeadings'], [
+            dict(text='1. Alpha ↑ 目次', tag='H2', nonToc=False, id='heading-1'),
+            dict(text='Beta', tag='DIV', nonToc=True, id='')
+        ])
+        self.assertEqual(result['restoredState'], dict(flag=True, tag='H2', tocLabels=['Alpha']))
+        self.assertEqual(result['enabledAgain'], dict(tocLabels=['Alpha', 'Beta'], outputHeadingCount=2))
 
     def test_toc_fit_content_and_custom_colors(self):
         result = self.page.evaluate("""() => {
@@ -2590,6 +2663,41 @@ class EditorTests(unittest.TestCase):
         for component in ["heading", "body", "list", "table", "code"]:
             self.assertIn(component, result["types"])
         self.assertEqual(result["csv"], [["a", "b"], ["one,two", "line1\nline2"]])
+
+    def test_markdown_standalone_x_links_become_xpost_components(self):
+        result = self.page.evaluate("""() => {
+            window.twttr = {widgets:{load:() => {}}};
+            const markdown = [
+              '導入文 https://x.com/demo/status/100',
+              '',
+              'https://x.com/demo/status/111?s=20',
+              '[投稿を見る](https://twitter.com/demo/status/222)',
+              '',
+              'https://x.com/demo'
+            ].join('\\n');
+            const imported = importMarkdownText(markdown, 'x-posts.md', {clearPreview:true});
+            const components = [...elements.preview.querySelectorAll(':scope > [data-inserted-component]')];
+            const posts = components.filter(component => component.dataset.insertedComponent === 'xpost');
+            return {
+              imported,
+              types:components.map(component => component.dataset.insertedComponent),
+              urls:posts.map(component => component.dataset.embedUrl),
+              blockquotes:posts.map(component => component.querySelector('blockquote a')?.getAttribute('href') || ''),
+              bodyText:components.filter(component => component.dataset.insertedComponent === 'body')
+                .map(component => component.textContent.replace(/\\s+/g, ' ').trim())
+            };
+        }""")
+        self.assertTrue(result['imported'])
+        self.assertEqual(result['types'], ['body', 'xpost', 'xpost', 'body'])
+        self.assertEqual(result['urls'], [
+            'https://x.com/demo/status/111?s=20',
+            'https://twitter.com/demo/status/222'
+        ])
+        self.assertEqual(result['blockquotes'], result['urls'])
+        self.assertEqual(result['bodyText'], [
+            '導入文 https://x.com/demo/status/100',
+            'https://x.com/demo'
+        ])
 
     def test_startup_with_storage_disabled(self):
         self.page.add_init_script("Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('Blocked', 'SecurityError'); } });")
