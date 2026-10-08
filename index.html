@@ -7826,13 +7826,22 @@ ${bodyHtml}
         replacement.append(...Array.from(heading.childNodes));
         heading.replaceWith(replacement);
       });
+      const mode = elements.htmlOutputMode?.value || "pretty";
+      if (mode === "noComments") {
+        // Remove comment nodes, not text: a regex could match "<!--" inside an
+        // attribute value and splice attributes into executable markup.
+        const walker = outputHolder.ownerDocument.createTreeWalker(outputHolder, NodeFilter.SHOW_COMMENT);
+        const comments = [];
+        while (walker.nextNode()) comments.push(walker.currentNode);
+        comments.forEach((comment) => {
+          const next = comment.nextSibling;
+          if (next?.nodeType === Node.TEXT_NODE) next.nodeValue = next.nodeValue.replace(/^\s+/, "");
+          comment.remove();
+        });
+      }
       html = sanitizeArticleMarkup(outputHolder.innerHTML);
       if (outputHolder.querySelector('blockquote.twitter-tweet,blockquote.twitter-video')) {
         html += '<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"><\/script>';
-      }
-      const mode = elements.htmlOutputMode?.value || "pretty";
-      if (mode === "noComments") {
-        html = html.replace(/<!--[\s\S]*?-->\s*/g, "");
       }
       if (mode === "compact") {
         html = html.replace(/>\s+</g, "><").replace(/\s{2,}/g, " ").trim();
@@ -16120,6 +16129,7 @@ ${bodyHtml}
       } catch {
         return false;
       }
+      if (!["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password) return false;
       const host = parsed.hostname.replace(/^www\./, "");
       return (host === "twitter.com" || host === "x.com" || host === "mobile.twitter.com")
         && /\/status\/\d+/.test(parsed.pathname);
@@ -19625,7 +19635,8 @@ ${bodyHtml}
 
     function ensureBoundaryComments(html, label = "コピー時に日時を記録") {
       const source = String(html ?? "");
-      const content = source.replace(/<!--([\s\S]*?)-->/g, (comment, commentBody) => (
+      // A match containing '"' would span an attribute boundary; boundary comments never contain one.
+      const content = source.replace(/<!--([^"]*?)-->/g, (comment, commentBody) => (
         /p-player\s+(開始|終了)\s*[:：]/.test(commentBody) ? "" : comment
       )).trim();
       if (!elements.includeBoundaryComments?.checked) return content;

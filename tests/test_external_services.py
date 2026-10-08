@@ -287,3 +287,21 @@ class ExternalServiceTests(unittest.TestCase):
             cards:elements.preview.querySelectorAll('[data-inserted-component="linkCard"]').length};
         }""")
         self.assertEqual(result, {'documents':2, 'cards':1})
+
+    def test_trusted_embeds_are_rebuilt_without_parameters(self):
+        result = self.page.evaluate("""() => {
+          const id = '0123456789abcdef0123456789abcdef';
+          const embeds = [
+            trustedDocumentEmbed('//speakerdeck.com/player/' + id + '/?autoplay=1#slide=3', 'speakerdeck'),
+            trustedDocumentEmbed('https://www.slideshare.net/slideshow/embed_code/key/abcd/?startSlide=9', 'slideshare'),
+            trustedDocumentEmbed('https://slideshare.net/slideshow/embed_code/12345', 'slideshare')
+          ];
+          return {embeds, trusted:embeds.map(trustedArticleFrame),
+            wrongProvider:trustedDocumentEmbed('https://speakerdeck.com/player/' + id, 'slideshare')};
+        }""")
+        self.assertEqual(result['embeds'], [
+            'https://speakerdeck.com/player/0123456789abcdef0123456789abcdef',
+            'https://www.slideshare.net/slideshow/embed_code/key/abcd',
+            'https://slideshare.net/slideshow/embed_code/12345'])
+        self.assertTrue(all(result['trusted']))
+        self.assertEqual(result['wrongProvider'], '')

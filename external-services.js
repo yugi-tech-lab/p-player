@@ -50,12 +50,17 @@ function externalDocumentInfo(value) {
   return null;
 }
 
+// Rebuilt from the matched path only, so provider query parameters and fragments are dropped
+// and the result matches trustedArticleFrame.
 function trustedDocumentEmbed(value, provider) {
   const url = externalHttpsUrl(String(value || '').startsWith('//') ? `https:${value}` : value);
   if (!url) return '';
-  if (provider === 'speakerdeck' && url.hostname === 'speakerdeck.com' && /^\/player\/[a-f\d]{32}\/?$/i.test(url.pathname)) return url.href;
-  if (provider === 'slideshare' && ['www.slideshare.net', 'slideshare.net'].includes(url.hostname)
-    && /^\/slideshow\/embed_code\/(?:key\/[\w-]+|\d+)\/?$/.test(url.pathname)) return url.href;
+  const speakerdeck = url.pathname.match(/^\/player\/([a-f\d]{32})\/?$/i);
+  if (provider === 'speakerdeck' && url.hostname === 'speakerdeck.com' && speakerdeck) return `https://speakerdeck.com/player/${speakerdeck[1]}`;
+  const slideshare = url.pathname.match(/^\/slideshow\/embed_code\/(key\/[\w-]+|\d+)\/?$/);
+  if (provider === 'slideshare' && ['www.slideshare.net', 'slideshare.net'].includes(url.hostname) && slideshare) {
+    return `https://${url.hostname}/slideshow/embed_code/${slideshare[1]}`;
+  }
   return '';
 }
 

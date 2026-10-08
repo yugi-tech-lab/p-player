@@ -139,3 +139,46 @@ class SecurityTests(unittest.TestCase):
           return outcomes;
         }''')
         self.assertTrue(all(item['rejected'] and item['intact'] for item in result))
+
+    def test_x_urls_require_web_protocol_and_export_drops_script_urls(self):
+        result = self.page.evaluate('''() => {
+          const holder = document.createElement('template');
+          holder.innerHTML = insertedComponentHtml('xpost');
+          holder.content.firstElementChild.dataset.embedUrl = 'javascript://x.com/status/1%0aalert(1)';
+          return {script:isXPostUrl('javascript://x.com/status/1%0aalert(1)'),
+            credentials:isXPostUrl('https://user@x.com/status/1'),
+            web:isXPostUrl('https://x.com/user/status/1'),
+            exported:formatOutputHtml(holder.innerHTML)};
+        }''')
+        self.assertFalse(result['script'])
+        self.assertFalse(result['credentials'])
+        self.assertTrue(result['web'])
+        self.assertNotIn('javascript', result['exported'].lower())
+
+    def test_comment_removal_cannot_splice_attributes(self):
+        result = self.page.evaluate('''() => {
+          // Legacy serializers leave "<" unescaped in attribute values.
+          const legacy = '<p title="<!-- p-player 開始：">a</p><!--x--><b title=" onfocus=alert(1) b=">c</b>';
+          const handlers = html => {
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            return [...doc.querySelectorAll('*')].some(el => [...el.attributes].some(a => a.name.startsWith('on')));
+          };
+          elements.htmlOutputMode.value = 'noComments';
+          const output = formatOutputHtml('<p title="<!--">a</p><!--x--><b title=" onfocus=alert(1) b=">c</b>');
+          return {boundary:handlers(ensureBoundaryComments(legacy)), output:handlers(output),
+            comment:output.includes('<!--x-->'), title:output.includes('title=')};
+        }''')
+        self.assertFalse(result['boundary'])
+        self.assertFalse(result['output'])
+        self.assertFalse(result['comment'])
+        self.assertTrue(result['title'])
+
+    def test_article_ids_cannot_clobber_reserved_globals(self):
+        result = self.page.evaluate('''() => {
+          importArticleHtml('<div id="twttr">a</div><div id="preview">b</div><div id="DOMPurify">c</div>');
+          return {twttr:window.twttr instanceof Element, previews:document.querySelectorAll('#preview').length,
+            purify:typeof DOMPurify.sanitize};
+        }''')
+        self.assertFalse(result['twttr'])
+        self.assertEqual(result['previews'], 1)
+        self.assertEqual(result['purify'], 'function')

@@ -61,6 +61,10 @@ function trustedArticleFrame(value) {
   } catch { return false; }
 }
 
+// Globals read optionally by the editor or X's widgets.js; named elements would clobber them.
+// Compared case-insensitively.
+const RESERVED_ARTICLE_IDS = new Set(['preview', 'twttr', '__twttr', 'twitter-wjs', 'dompurify', 'marked']);
+
 function sanitizeArticleMarkup(value, { preview = false, depth = 0 } = {}) {
   if (depth > 8) return '';
   if (!window.DOMPurify?.isSupported) throw new Error('安全なHTML処理を利用できません。再読み込みしてください。');
@@ -79,9 +83,10 @@ function sanitizeArticleMarkup(value, { preview = false, depth = 0 } = {}) {
       if (++nesting > 128) throw new Error('HTMLの階層が深すぎます');
       ancestor = ancestor.parentElement;
     }
-    // A saved article must not shadow editor controls via duplicate IDs/names.
+    // A saved article must not shadow editor controls or third-party globals via IDs/names.
     const existing = node.id && document.getElementById(node.id);
-    if (existing && !existing.closest('#preview')) node.removeAttribute('id');
+    if (RESERVED_ARTICLE_IDS.has(node.id.toLowerCase())
+      || (existing && !existing.closest('#preview'))) node.removeAttribute('id');
     node.removeAttribute('name');
     for (const attr of Array.from(node.attributes)) {
       if (attr.name.startsWith('data-') && attr.value.includes('<')) {
